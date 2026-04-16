@@ -1,0 +1,20 @@
+{
+  "name": "incident-service",
+  "version": "1.0.0",
+  "description": "Copilot SDK-based incident triage service — monitors Prometheus/Grafana for errors and creates actionable incidents with interactive playbooks",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@copilot-extensions/preview-sdk": "^5.0.1",
+    "express": "^4.18.2",
+    "express-session": "^1.18.1",
+    "node-cron": "^3.0.3",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

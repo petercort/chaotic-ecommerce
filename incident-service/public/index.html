@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Incident Command Center</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-muted: #8b949e; --accent: #58a6ff;
+      --sev1: #f85149; --sev2: #d29922; --sev3: #e3b341; --sev4: #3fb950;
+      --success-bg: #1a2e1a; --error-bg: #2e1a1a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 600; }
+    header .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+    }
+
+    /* Layout */
+    .container { display: flex; height: calc(100vh - 57px); overflow: hidden; }
+
+    /* Collapsible left sidebar */
+    .sidebar {
+      width: 340px; min-width: 0; border-right: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column;
+      transition: width 0.25s ease;
+      overflow: hidden;
+    }
+    .sidebar.collapsed { width: 40px; }
+    .sidebar.collapsed .sidebar-tabs,
+    .sidebar.collapsed .incident-list { display: none; }
+
+    .sidebar-collapse-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      right: -12px; z-index: 10;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text-muted); cursor: pointer; font-size: 0.75rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.15s;
+    }
+    .sidebar-collapse-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .sidebar-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px 0; position: relative; flex-shrink: 0;
+    }
+    .sidebar-collapsed-icon {
+      display: none; flex-direction: column; align-items: center;
+      padding: 16px 0; gap: 20px; cursor: pointer; flex: 1;
+    }
+    .sidebar.collapsed .sidebar-collapsed-icon { display: flex; }
+    .sidebar.collapsed .sidebar-header { padding: 8px 0 0; justify-content: center; }
+    .sidebar-tab-icon { font-size: 1.1rem; }
+
+    .main-panel { flex: 1; overflow-y: auto; padding: 24px; min-width: 0; }
+
+    /* Collapsible right Copilot panel */
+    .copilot-sidebar {
+      width: 380px; min-width: 0; border-left: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column;
+      transition: width 0.25s ease; overflow: hidden;
+    }
+    .copilot-sidebar.collapsed { width: 40px; }
+    .copilot-sidebar.collapsed .copilot-sidebar-body { display: none; }
+
+    /* Sidebar tabs */
+    .sidebar-tabs {
+      display: flex; border-bottom: 1px solid var(--border); position: sticky;
+      top: 0; background: var(--surface); z-index: 2;
+    }
+    .sidebar-tabs button {
+      flex: 1; background: none; border: none; color: var(--text-muted);
+      padding: 12px 8px; font-size: 0.85rem; cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .sidebar-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .sidebar-tabs button:hover { color: var(--text); }
+
+    /* Incident cards */
+    .incident-list { padding: 8px; }
+    .incident-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s;
+    }
+    .incident-card:hover { border-color: var(--accent); }
+    .incident-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .incident-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .incident-card .service-name { font-weight: 600; font-size: 0.95rem; }
+    .incident-card .card-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+    .incident-card .error-rate { font-size: 0.85rem; margin-top: 4px; }
+
+    /* Detail panel */
+    .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 1.1rem; }
+    .detail-header { margin-bottom: 24px; }
+    .detail-header h2 { font-size: 1.4rem; margin-bottom: 8px; }
+    .detail-header .meta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .detail-header .meta-row .badge { font-size: 0.8rem; }
+
+    /* Sections */
+    .section { margin-bottom: 24px; }
+    .section h3 {
+      font-size: 1rem; font-weight: 600; margin-bottom: 12px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+
+    /* Metrics grid */
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .metric-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px; text-align: center;
+    }
+    .metric-card .metric-value { font-size: 1.6rem; font-weight: 700; }
+    .metric-card .metric-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* Analysis markdown */
+    .analysis-content {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;
+    }
+    .analysis-content h2 { font-size: 1.1rem; margin: 12px 0 6px; }
+    .analysis-content h3 { font-size: 0.95rem; margin: 10px 0 4px; color: var(--accent); }
+    .analysis-content code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
+    .analysis-content pre { background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
+
+    /* Playbook */
+    .playbook-step {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px; margin-bottom: 10px;
+    }
+    .playbook-step .step-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .playbook-step .step-number {
+      background: var(--accent); color: var(--bg); width: 24px; height: 24px;
+      border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; margin-right: 8px;
+    }
+    .playbook-step .step-label { font-weight: 600; font-size: 0.9rem; }
+    .playbook-step .step-command {
+      background: var(--bg); padding: 10px 12px; border-radius: 6px;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem;
+      margin: 8px 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+    }
+    .playbook-step .step-expect { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
+    .run-btn {
+      background: var(--accent); color: var(--bg); border: none; padding: 6px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    .run-btn:hover { opacity: 0.85; }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .run-btn.running { background: var(--sev2); }
+
+    /* Command output */
+    .step-output {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 12px; margin-top: 8px; font-family: monospace; font-size: 0.78rem;
+      max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+    }
+    .step-output.success { border-color: var(--sev4); }
+    .step-output.error { border-color: var(--sev1); }
+
+    /* Step AI summary */
+    .step-summary {
+      margin-top: 8px; padding: 10px 14px; border-radius: 6px;
+      font-size: 0.875rem; line-height: 1.55;
+      border-left: 3px solid var(--border);
+    }
+    .step-summary.pass { background: rgba(63,185,80,0.1); border-left-color: var(--sev4); }
+    .step-summary.warn { background: rgba(210,153,34,0.12); border-left-color: var(--sev2); }
+    .step-summary.fail { background: rgba(248,81,73,0.1); border-left-color: var(--sev1); }
+    .step-summary .summary-badge {
+      display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 2px 7px; border-radius: 4px; margin-right: 6px; vertical-align: middle;
+    }
+    .step-summary.pass .summary-badge { background: var(--sev4); color: #000; }
+    .step-summary.warn .summary-badge { background: var(--sev2); color: #000; }
+    .step-summary.fail .summary-badge { background: var(--sev1); color: #fff; }
+    .step-summary .summary-text { display: inline; }
+    .step-summary .summary-text p { display: inline; margin: 0; }
+    /* Raw log disclosure */
+    .step-raw-log {
+      margin-top: 6px; font-size: 0.78rem;
+    }
+    .step-raw-log summary {
+      cursor: pointer; font-size: 0.78rem; color: var(--text-muted);
+      user-select: none; padding: 4px 0;
+    }
+    .step-raw-log summary:hover { color: var(--text); }
+    .step-raw-log pre {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 12px; margin-top: 6px; font-family: monospace;
+      font-size: 0.78rem; max-height: 240px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-all;
+    }
+
+    /* Error logs */
+    .log-viewer {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; font-family: monospace; font-size: 0.78rem;
+      max-height: 300px; overflow-y: auto; white-space: pre-wrap;
+    }
+    .log-line-error { color: var(--sev1); }
+    .log-line-warn { color: var(--sev2); }
+
+    /* Chaos panel */
+    .chaos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .chaos-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px;
+    }
+    .chaos-card h4 { font-size: 0.9rem; margin-bottom: 4px; }
+    .chaos-card p { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px; }
+    .chaos-btn {
+      background: var(--sev1); color: white; border: none; padding: 6px 14px;
+      border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+    }
+    .chaos-btn:hover { opacity: 0.85; }
+
+    /* Action bar */
+    .action-bar { display: flex; gap: 8px; margin-top: 12px; }
+    .action-bar button {
+      padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.8rem;
+    }
+    .action-bar button:hover { border-color: var(--accent); }
+    .action-bar button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px;
+      font-size: 0.85rem; z-index: 100; animation: slideIn 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 40px 20px; color: var(--text-muted);
+    }
+    .empty-state .big-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* Service health grid */
+    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 24px; }
+    .health-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px; text-align: left;
+    }
+    .health-card .svc-name { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+    .health-card .svc-detail { font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; }
+    .health-card.up { border-left: 3px solid var(--sev4); }
+    .health-card.down { border-left: 3px solid var(--sev1); }
+    .health-card.warning { border-left: 3px solid var(--sev2); }
+
+    /* Seed btn */
+    .seed-btn {
+      margin-top: 20px; background: var(--surface); border: 1px dashed var(--border);
+      color: var(--text-muted); padding: 8px 18px; border-radius: 8px;
+      cursor: pointer; font-size: 0.82rem;
+    }
+    .seed-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* User avatar in header */
+    .user-info {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.82rem; color: var(--text-muted);
+    }
+    .user-info img {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid var(--border);
+    }
+    .user-info a { color: var(--accent); text-decoration: none; font-size: 0.78rem; }
+    .logout-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+    }
+    .logout-btn:hover { border-color: var(--sev1); color: var(--sev1); }
+
+    /* Copilot right sidebar header */
+    .copilot-sidebar-header {
+      display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(110,64,201,0.1), rgba(88,166,255,0.08));
+      cursor: pointer; user-select: none;
+    }
+    .copilot-sidebar.collapsed .copilot-sidebar-header {
+      flex-direction: column; padding: 14px 0; justify-content: center; align-items: center; gap: 6px;
+    }
+    .copilot-sidebar.collapsed .copilot-sidebar-header .ch-title,
+    .copilot-sidebar.collapsed .copilot-sidebar-header .ch-badge,
+    .copilot-sidebar.collapsed .copilot-sidebar-header .ch-collapse { display: none; }
+    .copilot-sidebar.collapsed .copilot-sidebar-header .ch-logo { font-size: 1.3rem; }
+
+    .ch-logo { font-size: 1.1rem; }
+    .ch-title { font-size: 0.9rem; font-weight: 600; flex: 1; }
+    .ch-collapse {
+      background: none; border: none; color: var(--text-muted); font-size: 0.85rem;
+      cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    }
+    .ch-collapse:hover { color: var(--accent); background: var(--bg); }
+
+    .copilot-sidebar-body { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+    /* Copilot mode badge */
+    .copilot-mode {
+      font-size: 0.7rem; padding: 2px 7px; border-radius: 10px; font-weight: 600;
+    }
+    .copilot-mode.ai { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+    .copilot-mode.local { background: var(--border); color: var(--text-muted); }
+
+    .copilot-messages {
+      flex: 1; overflow-y: auto; padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .copilot-msg {
+      max-width: 92%; padding: 10px 14px; border-radius: 10px;
+      font-size: 0.85rem; line-height: 1.55; white-space: pre-wrap;
+    }
+    .copilot-msg.user {
+      align-self: flex-end; background: var(--accent); color: var(--bg);
+      border-bottom-right-radius: 4px;
+    }
+    .copilot-msg.assistant {
+      align-self: flex-start; background: var(--bg); border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .copilot-msg.assistant code {
+      background: var(--surface); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem;
+    }
+    .copilot-msg.assistant pre {
+      background: var(--surface); padding: 8px 10px; border-radius: 6px;
+      overflow-x: auto; margin: 6px 0; font-size: 0.78rem;
+    }
+    .copilot-msg.assistant h1, .copilot-msg.assistant h2, .copilot-msg.assistant h3 {
+      font-size: 0.9rem; margin: 8px 0 4px; color: var(--accent);
+    }
+    .copilot-msg.thinking {
+      align-self: flex-start; background: none; border: 1px dashed var(--border);
+      color: var(--text-muted); font-style: italic;
+      animation: pulse 1.5s infinite;
+    }
+
+    .copilot-input-row {
+      padding: 10px 14px; border-top: 1px solid var(--border);
+      display: flex; gap: 8px;
+    }
+    .copilot-input-row input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; color: var(--text);
+      font-size: 0.85rem; outline: none;
+    }
+    .copilot-input-row input:focus { border-color: var(--accent); }
+    .copilot-input-row button {
+      background: var(--accent); color: var(--bg); border: none;
+      border-radius: 8px; padding: 8px 14px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600;
+    }
+    .copilot-input-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .copilot-suggestions {
+      padding: 6px 14px 4px; display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .copilot-suggestions button {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 14px;
+      padding: 4px 10px; color: var(--text-muted); font-size: 0.75rem; cursor: pointer;
+    }
+    .copilot-suggestions button:hover { border-color: var(--accent); color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="status-dot" id="poll-dot" style="background: #3fb950;" title="Monitoring active"></div>
+    <h1>Incident Command Center</h1>
+    <span id="incident-count" class="badge" style="background: var(--border); color: var(--text);">0 incidents</span>
+    <span id="last-poll" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);">Waiting for first poll...</span>
+    <div id="user-info-header" class="user-info" style="margin-left:16px;"></div>
+  </header>
+
+  <div class="container">
+    <!-- Left sidebar: Incidents + Chaos -->
+    <div class="sidebar" id="left-sidebar">
+      <div class="sidebar-header">
+        <button class="sidebar-collapse-btn" onclick="toggleLeftSidebar()" id="left-collapse-btn" title="Collapse">&#8249;</button>
+      </div>
+      <!-- Collapsed icon view -->
+      <div class="sidebar-collapsed-icon" onclick="toggleLeftSidebar()" title="Expand">
+        <span class="sidebar-tab-icon" title="Incidents">🚨</span>
+        <span class="sidebar-tab-icon" title="Chaos Lab">🔥</span>
+      </div>
+      <div class="sidebar-tabs">
+        <button class="active" onclick="showSidebarTab('incidents')">Incidents</button>
+        <button onclick="showSidebarTab('chaos')">Chaos Lab</button>
+      </div>
+      <div id="sidebar-incidents" class="incident-list" style="overflow-y:auto;flex:1;"></div>
+      <div id="sidebar-chaos" class="incident-list" style="display:none;overflow-y:auto;flex:1;"></div>
+    </div>
+
+    <!-- Main panel -->
+    <div class="main-panel" id="main-panel">
+      <div id="empty-state" style="padding:24px;">
+        <div class="empty-state">
+          <div class="big-icon">🛡️</div>
+          <h3>All Systems Monitored</h3>
+          <p style="margin-top:8px;">Polling Prometheus every 15 seconds.<br>Incidents appear automatically when errors are detected.</p>
+          <p style="margin-top:12px;font-size:0.85rem;">
+            <a href="http://localhost:9090" target="_blank">Prometheus</a> ·
+            <a href="http://localhost:3000" target="_blank">Grafana</a> ·
+            <a href="http://localhost:9999" target="_blank">Dozzle Logs</a>
+          </p>
+          <button class="seed-btn" onclick="seedIncident()">+ Seed demo incident (for testing)</button>
+        </div>
+        <div id="health-grid-container">
+          <h3 style="font-size:0.95rem;font-weight:600;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border);">Live Service Health</h3>
+          <div class="health-grid" id="health-grid"><div style="color:var(--text-muted);font-size:0.85rem;">Loading…</div></div>
+        </div>
+      </div>
+      <div id="detail-content" style="display:none;"></div>
+    </div>
+
+    <!-- Right sidebar: Copilot Chat -->
+    <div class="copilot-sidebar" id="copilot-sidebar">
+      <div class="copilot-sidebar-header" onclick="toggleCopilotSidebar()">
+        <span class="ch-logo">✨</span>
+        <span class="ch-title">Copilot Diagnostics</span>
+        <span id="copilot-mode-badge" class="copilot-mode local ch-badge">⚡ Pattern Mode</span>
+        <button class="ch-collapse" onclick="event.stopPropagation();toggleCopilotSidebar()" title="Collapse">&#8250;</button>
+      </div>
+      <div class="copilot-sidebar-body">
+        <div class="copilot-suggestions" id="copilot-suggestions">
+          <button onclick="copilotSend('What is the current system status?')">System status</button>
+          <button onclick="copilotSend('Show me all active incidents and their revenue impact')">Active incidents</button>
+          <button onclick="copilotSend('Check the health of order-service and show its error rate')">Order health</button>
+          <button onclick="copilotSend('What are the error rates across all services?')">Error rates</button>
+          <button onclick="copilotSend('Show me the last 20 error log lines from order-service')">Order logs</button>
+          <button onclick="copilotSend('Run a deep diagnostic on the most critical incident')">Deep diagnostic</button>
+        </div>
+        <div class="copilot-messages" id="copilot-messages">
+          <div class="copilot-msg assistant">Hi! I'm your Copilot SRE assistant. I can query Prometheus metrics, inspect service health, read Docker logs, run diagnostic commands, and walk through playbook steps. What would you like to investigate?</div>
+        </div>
+        <div class="copilot-input-row">
+          <input type="text" id="copilot-input" placeholder="Ask about incidents, metrics, logs…" onkeydown="if(event.key==='Enter') copilotSendInput()" />
+          <button id="copilot-send-btn" onclick="copilotSendInput()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    let incidents = [];
+    let selectedId = null;
+    let sidebarTab = 'incidents';
+    let currentUser = null; // set after /auth/me
+
+    // -----------------------------------------------------------------------
+    // Auth state
+    // -----------------------------------------------------------------------
+    async function loadAuthState() {
+      try {
+        const res = await fetch('/auth/me');
+        const data = await res.json();
+        const headerEl = document.getElementById('user-info-header');
+        if (data.authenticated && data.user) {
+          currentUser = data.user;
+          headerEl.innerHTML = `
+            <img src="${data.user.avatar}" alt="${data.user.login}">
+            <a href="${data.user.url}" target="_blank">@${data.user.login}</a>
+            <form method="POST" action="/auth/logout" style="margin:0">
+              <button class="logout-btn" type="submit">Sign out</button>
+            </form>`;
+          document.getElementById('copilot-mode-badge').textContent = '✨ Copilot AI';
+          document.getElementById('copilot-mode-badge').className = 'copilot-mode ai ch-badge';
+        } else {
+          currentUser = null;
+          headerEl.innerHTML = `<a href="/login" style="color:var(--accent);font-size:0.8rem;">Sign in with GitHub</a>`;
+          document.getElementById('copilot-mode-badge').textContent = '⚡ Pattern Mode';
+          document.getElementById('copilot-mode-badge').className = 'copilot-mode local ch-badge';
+        }
+      } catch { /* ignore */ }
+    }
+
+    // -----------------------------------------------------------------------
+    // Panel collapse toggles
+    // -----------------------------------------------------------------------
+    function toggleLeftSidebar() {
+      const sb = document.getElementById('left-sidebar');
+      const btn = document.getElementById('left-collapse-btn');
+      sb.classList.toggle('collapsed');
+      btn.innerHTML = sb.classList.contains('collapsed') ? '&#8250;' : '&#8249;';
+      btn.title = sb.classList.contains('collapsed') ? 'Expand' : 'Collapse';
+    }
+
+    function toggleCopilotSidebar() {
+      const cs = document.getElementById('copilot-sidebar');
+      cs.classList.toggle('collapsed');
+      if (!cs.classList.contains('collapsed')) {
+        setTimeout(() => document.getElementById('copilot-input')?.focus(), 300);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Polling
+    // -----------------------------------------------------------------------
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const statuses = await res.json();
+        const grid = document.getElementById('health-grid');
+        if (!grid) return;
+        if (statuses.length === 0) {
+          grid.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No data yet — waiting for first poll…</div>';
+          return;
+        }
+        grid.innerHTML = statuses.map(s => {
+          const cls = s.isDown ? 'down' : s.errorRate > 1 ? 'warning' : 'up';
+          const dot = s.isDown ? '🔴' : s.errorRate > 1 ? '🟡' : '🟢';
+          return `
+            <div class="health-card ${cls}">
+              <div class="svc-name">${dot} ${s.service}</div>
+              <div class="svc-detail">
+                Error rate: ${s.errorRate.toFixed(2)}%<br>
+                P99: ${s.latencyP99.toFixed(0)}ms<br>
+                CB: ${s.cbOpen ? '🔓 Open' : '🔒 Closed'}<br>
+                <span style="font-size:0.7rem;">${new Date(s.updatedAt).toLocaleTimeString()}</span>
+              </div>
+            </div>`;
+        }).join('');
+      } catch { /* ignore */ }
+    }
+
+    async function seedIncident() {
+      const services = ['order-service', 'customer-service', 'inventory-service', 'api-gateway', 'eureka-server'];
+      const svc = services[Math.floor(Math.random() * services.length)];
+      try {
+        const res = await fetch('/api/incidents/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: svc, errorRate: 15 + Math.random() * 40 }),
+        });
+        const data = await res.json();
+        toast(`Demo incident created: ${data.service} (${data.severity?.label})`);
+        await fetchIncidents();
+      } catch (err) {
+        toast('Failed to seed incident: ' + err.message);
+      }
+    }
+
+    async function fetchIncidents() {
+      try {
+        const res = await fetch('/api/incidents');
+        incidents = await res.json();
+        renderSidebar();
+        if (selectedId) renderDetail(selectedId);
+        document.getElementById('incident-count').textContent = `${incidents.filter(i => i.status !== 'resolved').length} active`;
+        document.getElementById('last-poll').textContent = `Last poll: ${new Date().toLocaleTimeString()}`;
+        document.getElementById('poll-dot').style.background = incidents.some(i => i.status === 'open' && i.severity.level === 'critical') ? '#f85149' : '#3fb950';
+      } catch {
+        document.getElementById('last-poll').textContent = 'Poll failed';
+        document.getElementById('poll-dot').style.background = '#d29922';
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Sidebar rendering
+    // -----------------------------------------------------------------------
+    function showSidebarTab(tab) {
+      sidebarTab = tab;
+      document.querySelectorAll('.sidebar-tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.sidebar-tabs button')[tab === 'incidents' ? 0 : 1].classList.add('active');
+      document.getElementById('sidebar-incidents').style.display = tab === 'incidents' ? '' : 'none';
+      document.getElementById('sidebar-chaos').style.display = tab === 'chaos' ? '' : 'none';
+      if (tab === 'chaos') renderChaosPanel();
+    }
+
+    function sevColor(sev) {
+      return { critical: 'var(--sev1)', high: 'var(--sev2)', medium: 'var(--sev3)', low: 'var(--sev4)' }[sev.level] || 'var(--text-muted)';
+    }
+
+    function statusIcon(status) {
+      return { open: '🔴', acknowledged: '🟡', resolved: '🟢' }[status] || '⚪';
+    }
+
+    function renderSidebar() {
+      const el = document.getElementById('sidebar-incidents');
+      if (incidents.length === 0) {
+        el.innerHTML = '<div class="empty-state"><div class="big-icon">✅</div><p>No incidents detected</p></div>';
+        return;
+      }
+
+      const open = incidents.filter(i => i.status !== 'resolved');
+      const resolved = incidents.filter(i => i.status === 'resolved');
+
+      el.innerHTML = [
+        ...open.map(i => incidentCardHtml(i)),
+        resolved.length ? '<div style="padding:8px 4px;font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Resolved</div>' : '',
+        ...resolved.slice(0, 10).map(i => incidentCardHtml(i)),
+      ].join('');
+    }
+
+    function incidentCardHtml(i) {
+      return `
+        <div class="incident-card ${i.id === selectedId ? 'selected' : ''}" onclick="selectIncident('${i.id}')">
+          <div class="card-header">
+            <span class="service-name">${statusIcon(i.status)} ${i.service}</span>
+            <span style="font-size:0.7rem;color:var(--text-muted);font-family:monospace;">#${i.uid ?? '----'}</span>
+            <span class="badge" style="background:${sevColor(i.severity)};color:#000;">${i.severity.label}</span>
+          </div>
+          <div class="error-rate">
+            ${i.isDown ? '⛔ Service Down' : `Error rate: ${i.errorRate.toFixed(1)}%`}
+            ${i.latencyP99 > 0 ? ` · P99: ${i.latencyP99.toFixed(0)}ms` : ''}
+          </div>
+          <div class="card-meta">
+            ${timeAgo(i.createdAt)} · ${i.updateCount || 0} updates
+          </div>
+        </div>`;
+    }
+
+    function timeAgo(iso) {
+      const d = (Date.now() - new Date(iso)) / 1000;
+      if (d < 60) return `${Math.floor(d)}s ago`;
+      if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+      return `${Math.floor(d / 3600)}h ago`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Detail rendering
+    // -----------------------------------------------------------------------
+    function selectIncident(id) {
+      selectedId = id;
+      renderSidebar();
+      renderDetail(id);
+    }
+
+    function renderDetail(id) {
+      const i = incidents.find(x => x.id === id);
+      if (!i) return;
+
+      document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('health-grid-container') && (document.getElementById('health-grid-container').style.display = 'none');
+      const el = document.getElementById('detail-content');
+      el.style.display = '';
+
+      el.innerHTML = `
+        <!-- Header -->
+        <div class="detail-header">
+          <h2>${statusIcon(i.status)} ${i.service} <span style="font-size:0.9rem;color:var(--text-muted);font-family:monospace;font-weight:400;">#${i.uid ?? '----'}</span></h2>
+          <div class="meta-row">
+            <span class="badge" style="background:${sevColor(i.severity)};color:#000;">${i.severity.label} · Revenue Score ${i.severity.score.toFixed(0)}</span>
+            <span class="badge" style="background:var(--border);color:var(--text);">${i.status.toUpperCase()}</span>
+            <span style="font-size:0.8rem;color:var(--text-muted);">Created ${new Date(i.createdAt).toLocaleString()}</span>
+          </div>
+          <div class="action-bar">
+            ${i.status === 'open' ? `<button class="primary" onclick="updateStatus('${i.id}','acknowledged')">Acknowledge</button>` : ''}
+            ${i.status !== 'resolved' ? `<button onclick="updateStatus('${i.id}','resolved')">Resolve</button>` : ''}
+            ${i.status === 'resolved' ? `<button onclick="updateStatus('${i.id}','open')">Re-open</button>` : ''}
+            <button onclick="loadIncidentContext('${i.id}')" style="margin-left:auto;">✨ Ask Copilot</button>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="section">
+          <h3>Key Metrics</h3>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-value" style="color:${i.isDown ? 'var(--sev1)' : i.errorRate > 20 ? 'var(--sev2)' : 'var(--sev4)'}">
+                ${i.isDown ? 'DOWN' : i.errorRate.toFixed(1) + '%'}
+              </div>
+              <div class="metric-label">${i.isDown ? 'Service Status' : 'Error Rate'}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">${i.latencyP99 > 0 ? i.latencyP99.toFixed(0) + 'ms' : 'N/A'}</div>
+              <div class="metric-label">P99 Latency</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value" style="color:${sevColor(i.severity)}">${i.severity.score.toFixed(0)}</div>
+              <div class="metric-label">Revenue Impact Score</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">${i.cbOpen ? '🔓 OPEN' : '🔒 Closed'}</div>
+              <div class="metric-label">Circuit Breaker</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Triage Analysis -->
+        <div class="section">
+          <h3>Triage Analysis</h3>
+          <div class="analysis-content">${renderMarkdown(i.analysis)}</div>
+        </div>
+
+        <!-- Interactive Playbook -->
+        <div class="section">
+          <h3>📋 ${i.playbook?.title || 'Recovery Playbook'}</h3>
+          <div id="playbook-steps">
+            ${(i.playbook?.steps || []).map(s => playbookStepHtml(i.id, s, i.commandResults)).join('')}
+          </div>
+        </div>
+
+        <!-- Error Logs -->
+        <div class="section">
+          <h3>Error Log Highlights</h3>
+          <div class="log-viewer">
+            ${(i.errorLines || []).map(l => {
+              const cls = /error|exception|fatal/i.test(l) ? 'log-line-error' : /warn/i.test(l) ? 'log-line-warn' : '';
+              return `<div class="${cls}">${escapeHtml(l)}</div>`;
+            }).join('') || '<div style="color:var(--text-muted)">No error lines captured</div>'}
+          </div>
+        </div>
+
+        <!-- Monitoring Links -->
+        <div class="section">
+          <h3>Quick Links</h3>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <a href="http://localhost:3000/d/chaos-overview/chaos-testing-overview" target="_blank" class="badge" style="background:var(--surface);border:1px solid var(--border);padding:8px 14px;">📊 Grafana</a>
+            <a href="http://localhost:9090/graph?g0.expr=rate(http_server_requests_seconds_count{job=%22${i.service}%22,status=~%225..%22}[1m])" target="_blank" class="badge" style="background:var(--surface);border:1px solid var(--border);padding:8px 14px;">📈 Prometheus</a>
+            <a href="http://localhost:9999" target="_blank" class="badge" style="background:var(--surface);border:1px solid var(--border);padding:8px 14px;">📜 Dozzle Logs</a>
+            <a href="http://localhost:${i.port}/actuator/health" target="_blank" class="badge" style="background:var(--surface);border:1px solid var(--border);padding:8px 14px;">💓 Health</a>
+          </div>
+        </div>
+      `;
+    }
+
+    function playbookStepHtml(incId, step, results) {
+      const result = results?.[step.id];
+      const hasRun = !!result;
+      const isSuccess = hasRun && result.exitCode === 0;
+      const statusClass = result?.summaryStatus || (isSuccess ? 'pass' : 'fail');
+      const badgeLabel = statusClass === 'pass' ? 'PASS' : statusClass === 'warn' ? 'WARN' : 'FAIL';
+
+      let resultHtml = '';
+      if (hasRun) {
+        const summaryMd = result.summary || '';
+        const rawOutput = escapeHtml(result.output || '(no output)');
+        const ranAt = new Date(result.ranAt).toLocaleTimeString();
+
+        resultHtml = `
+          <div class="step-summary ${statusClass}">
+            <span class="summary-badge">${badgeLabel}</span>
+            <span class="summary-text">${renderCopilotMarkdown(summaryMd)}</span>
+          </div>
+          <details class="step-raw-log">
+            <summary>View raw output · exit ${result.exitCode} · ${ranAt}</summary>
+            <pre>${rawOutput}</pre>
+          </details>`;
+      }
+
+      return `
+        <div class="playbook-step">
+          <div class="step-header">
+            <div>
+              <span class="step-number">${step.id}</span>
+              <span class="step-label">${step.label}</span>
+            </div>
+            <button class="run-btn" id="run-btn-${step.id}" onclick="runStep('${incId}', ${step.id})">
+              ${hasRun ? (isSuccess ? '✓ Re-run' : '✗ Retry') : '▶ Run'}
+            </button>
+          </div>
+          <div class="step-command">${escapeHtml(step.command)}</div>
+          <div class="step-expect">Expected: ${step.expect}</div>
+          ${resultHtml}
+        </div>`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Actions
+    // -----------------------------------------------------------------------
+    async function updateStatus(id, status) {
+      await fetch(`/api/incidents/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      await fetchIncidents();
+      toast(`Incident ${status}`);
+    }
+
+    async function runStep(incId, stepId) {
+      const btn = document.getElementById(`run-btn-${stepId}`);
+      btn.disabled = true;
+      btn.classList.add('running');
+      btn.textContent = '⏳ Running...';
+
+      try {
+        const res = await fetch(`/api/incidents/${incId}/run-step/${stepId}`, { method: 'POST' });
+        const data = await res.json();
+
+        // Show "Analyzing…" state while we wait for the full re-render
+        btn.textContent = '✨ Analyzing...';
+
+        // Refresh the incident to show summary + raw log
+        await fetchIncidents();
+
+        const verdict = data.summaryStatus === 'fail' ? 'failed' : data.summaryStatus === 'warn' ? 'passed with warnings' : 'passed';
+        toast(`Step ${stepId} ${verdict}`);
+      } catch (err) {
+        toast(`Step ${stepId} error: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('running');
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Chaos Lab panel
+    // -----------------------------------------------------------------------
+    async function renderChaosPanel() {
+      const el = document.getElementById('sidebar-chaos');
+      try {
+        const res = await fetch('/api/chaos');
+        const scenarios = await res.json();
+        el.innerHTML = `
+          <div style="padding:12px;">
+            <h3 style="font-size:0.95rem;margin-bottom:12px;">🔥 Chaos Scenarios</h3>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">
+              Launch chaos experiments to test resilience. Incidents will be auto-created when errors are detected.
+            </p>
+            <div class="chaos-grid">
+              ${scenarios.map(s => `
+                <div class="chaos-card">
+                  <h4>${s.label}</h4>
+                  <p>${s.description}</p>
+                  <button class="chaos-btn" onclick="launchChaos('${s.id}', this)">🚀 Launch</button>
+                </div>`).join('')}
+            </div>
+          </div>`;
+      } catch {
+        el.innerHTML = '<div class="empty-state"><p>Could not load chaos scenarios</p></div>';
+      }
+    }
+
+    async function launchChaos(id, btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      try {
+        const res = await fetch(`/api/chaos/${id}`, { method: 'POST' });
+        const data = await res.json();
+        toast(`${data.message} (PID ${data.pid})`);
+      } catch (err) {
+        toast(`Error: ${err.message}`);
+      }
+      setTimeout(() => { btn.disabled = false; btn.textContent = '🚀 Launch'; }, 5000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(str || ''));
+      return div.innerHTML;
+    }
+
+    function renderMarkdown(md) {
+      if (!md) return '';
+      return escapeHtml(md)
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+        .replace(/^- (.+)$/gm, '• $1')
+        .replace(/^\d+\. (.+)$/gm, (_, p1, offset, str) => `${str.substring(0, offset).split('\n').length}. ${p1}`)
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    }
+
+    function toast(msg) {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+
+    // -----------------------------------------------------------------------
+    // Copilot chat
+    // -----------------------------------------------------------------------
+    let copilotHistory = [];
+
+    function loadIncidentContext(id) {
+      const i = incidents.find(x => x.id === id);
+      if (!i) return;
+
+      // Expand the Copilot sidebar if collapsed
+      const cs = document.getElementById('copilot-sidebar');
+      if (cs.classList.contains('collapsed')) toggleCopilotSidebar();
+
+      // Build a rich context message
+      const ctx = [
+        `I'm looking at incident **#${i.uid ?? '----'}** for **${i.service}**.`,
+        `- Severity: ${i.severity.label} (revenue score ${i.severity.score.toFixed(0)})`,
+        `- Incident ID: #${i.uid ?? '----'}  (internal: ${i.id})`,
+
+        `- Status: ${i.status}`,
+        i.isDown ? `- Service is DOWN` : `- Error rate: ${i.errorRate.toFixed(2)}%`,
+        i.latencyP99 > 0 ? `- P99 latency: ${i.latencyP99.toFixed(0)}ms` : null,
+        `- Circuit breaker: ${i.cbOpen ? 'OPEN' : 'closed'}`,
+        i.analysis ? `\nTriage summary:\n${i.analysis.slice(0, 400)}` : null,
+        `\nPlease help me diagnose and resolve this incident.`,
+      ].filter(Boolean).join('\n');
+
+      // Clear existing history and inject the context
+      copilotHistory = [];
+      const messagesEl = document.getElementById('copilot-messages');
+      messagesEl.innerHTML = `<div class="copilot-msg assistant">Incident context loaded for <strong>${i.service}</strong>. What would you like to investigate?</div>`;
+      document.getElementById('copilot-suggestions').style.display = '';
+
+      // Send as first user message
+      copilotSend(ctx);
+
+      setTimeout(() => document.getElementById('copilot-input')?.focus(), 350);
+      toast(`Incident context loaded into Copilot`);
+    }
+    let copilotBusy = false;
+
+    function copilotSendInput() {
+      const input = document.getElementById('copilot-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      copilotSend(msg);
+    }
+
+    async function copilotSend(message) {
+      if (copilotBusy) return;
+      copilotBusy = true;
+
+      const messagesEl = document.getElementById('copilot-messages');
+      const sendBtn = document.getElementById('copilot-send-btn');
+      const suggestionsEl = document.getElementById('copilot-suggestions');
+      sendBtn.disabled = true;
+      suggestionsEl.style.display = 'none';
+
+      copilotHistory.push({ role: 'user', content: message });
+      messagesEl.innerHTML += `<div class="copilot-msg user">${escapeHtml(message)}</div>`;
+
+      const thinkingId = 'thinking-' + Date.now();
+      messagesEl.innerHTML += `<div class="copilot-msg thinking" id="${thinkingId}">Analyzing with Copilot...</div>`;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        const res = await fetch('/api/copilot/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: copilotHistory }),
+        });
+        const data = await res.json();
+        document.getElementById(thinkingId)?.remove();
+
+        if (data.error) {
+          messagesEl.innerHTML += `<div class="copilot-msg assistant" style="border-color:var(--sev1);">Error: ${escapeHtml(data.error)}</div>`;
+        } else {
+          const content = data.content || '(no response)';
+          copilotHistory.push({ role: 'assistant', content });
+          messagesEl.innerHTML += `<div class="copilot-msg assistant">${renderCopilotMarkdown(content)}</div>`;
+        }
+      } catch (err) {
+        document.getElementById(thinkingId)?.remove();
+        messagesEl.innerHTML += `<div class="copilot-msg assistant" style="border-color:var(--sev1);">Connection error: ${escapeHtml(err.message)}</div>`;
+      }
+
+      copilotBusy = false;
+      sendBtn.disabled = false;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function renderCopilotMarkdown(md) {
+      if (!md) return '';
+      return escapeHtml(md)
+        .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^- (.+)$/gm, '• $1')
+        .replace(/\n/g, '<br>');
+    }
+
+    // -----------------------------------------------------------------------
+    // Boot
+    // -----------------------------------------------------------------------
+    loadAuthState();
+    fetchIncidents();
+    fetchStatus();
+    setInterval(fetchIncidents, 10000);
+    setInterval(fetchStatus, 20000);
+    setInterval(loadAuthState, 60000);
+  </script>
+</body>
+</html>

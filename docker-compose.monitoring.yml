@@ -48,6 +48,28 @@ services:
     networks:
       - ecommerce-net
 
+  incident-service:
+    build:
+      context: ./incident-service
+      dockerfile: Dockerfile
+    container_name: incident-service
+    ports:
+      - "${INCIDENT_SERVICE_PORT:-8095}:8095"
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      PROJECT_ROOT: /workspace
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SESSION_SECRET: ${SESSION_SECRET:-incident-cmd-dev-secret}
+      GITHUB_REPO: ${GITHUB_REPO:-petercort/copilot-spring-boot-demo}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace:ro
+    depends_on:
+      - prometheus
+    networks:
+      - ecommerce-net
+
 networks:
   ecommerce-net:
     name: copilot-spring-boot-demo_ecommerce-net

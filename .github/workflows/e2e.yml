@@ -51,6 +51,7 @@ jobs:
         working-directory: demo-ui
         run: |
           npm install
+          npm run build
           npm start &
           sleep 5
 

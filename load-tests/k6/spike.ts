@@ -1,8 +1,9 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, buildOrderPayload, JSON_HEADERS } from './config.js';
+import type { Options } from 'k6/options';
+import { BASE_URL, buildOrderPayload, JSON_HEADERS } from './config';
 
-export const options = {
+export const options: Options = {
   stages: [
     { duration: '30s', target: 10  },  // baseline
     { duration: '10s', target: 100 },  // spike!
@@ -15,8 +16,8 @@ export const options = {
   },
 };
 
-export default function () {
+export default function (): void {
   const r = http.get(`${BASE_URL}/api/products`);
-  check(r, { 'products ok': res => res.status === 200 });
-  sleep(0.5);
+  check(r, { 'products ok': (res) => res.status === 200 });
+  sleep(1);
 }

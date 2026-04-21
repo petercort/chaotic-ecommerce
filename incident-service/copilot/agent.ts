@@ -8,24 +8,40 @@
 //      with tool calling when a valid GitHub token is available.
 // ---------------------------------------------------------------------------
 
-const {
+import {
   createAckEvent,
   createTextEvent,
   createDoneEvent,
   createErrorsEvent,
   prompt,
   getFunctionCalls,
-} = require('@copilot-extensions/preview-sdk');
-
-const { TOOL_DEFINITIONS } = require('./tools');
-const { handlers } = require('./handlers');
+} from '@copilot-extensions/preview-sdk';
+import type { Request, Response } from 'express';
+import { TOOL_DEFINITIONS } from './tools';
+import { handlers } from './handlers';
+import type { AgentContext } from '../types';
 
 const SERVICES = ['api-gateway', 'customer-service', 'inventory-service', 'order-service', 'eureka-server'];
+
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  tool_calls?: Array<{
+    id: string;
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
+interface ToolIntent {
+  tool: string;
+  args: Record<string, unknown>;
+}
 
 // ---------------------------------------------------------------------------
 // Pattern-based intent detection for local chat
 // ---------------------------------------------------------------------------
-function detectIntent(message) {
+function detectIntent(message: string): ToolIntent[] {
   const msg = message.toLowerCase();
 
   // Extract a service name if mentioned
@@ -164,7 +180,11 @@ You can also create GitHub issues to track incidents — use create_github_issue
 // ---------------------------------------------------------------------------
 // Direct Copilot API chat — calls api.githubcopilot.com with OAuth token
 // ---------------------------------------------------------------------------
-async function handleCopilotAPIChat(messages, token, ctx) {
+export async function handleCopilotAPIChat(
+  messages: ChatMessage[],
+  token: string,
+  ctx: AgentContext,
+): Promise<string> {
   // Strip 'strict' field — not needed and may cause issues with some models
   const tools = TOOL_DEFINITIONS.map(t => ({
     type: t.type,
@@ -175,7 +195,7 @@ async function handleCopilotAPIChat(messages, token, ctx) {
     },
   }));
 
-  let conversationMessages = [
+  let conversationMessages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     ...messages,
   ];
@@ -203,7 +223,14 @@ async function handleCopilotAPIChat(messages, token, ctx) {
       throw new Error(`Copilot API ${response.status}: ${body.slice(0, 200)}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      choices?: Array<{
+        finish_reason: string;
+        message: ChatMessage & {
+          tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      }>;
+    };
     const choice = data.choices?.[0];
     if (!choice) break;
 
@@ -213,14 +240,14 @@ async function handleCopilotAPIChat(messages, token, ctx) {
       conversationMessages.push(msg);
       for (const tc of msg.tool_calls) {
         const handler = handlers[tc.function.name];
-        let result;
+        let result: string;
         if (handler) {
           try {
-            const args = JSON.parse(tc.function.arguments || '{}');
+            const args = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
             const r = handler(args, ctx);
             result = r instanceof Promise ? await r : r;
           } catch (e) {
-            result = `Tool error: ${e.message}`;
+            result = `Tool error: ${(e as Error).message}`;
           }
         } else {
           result = `Unknown tool: ${tc.function.name}`;
@@ -242,22 +269,22 @@ async function handleCopilotAPIChat(messages, token, ctx) {
 /**
  * Register the Copilot agent routes on an Express app.
  */
-function registerCopilotAgent(app, ctx) {
-  app.post('/api/copilot/chat', async (req, res) => {
+export function registerCopilotAgent(app: { post: Function }, ctx: AgentContext): void {
+  app.post('/api/copilot/chat', async (req: Request & { session?: { githubToken?: string } }, res: Response) => {
     // Prefer session token (OAuth login), then explicit header/env var
     const token = req.session?.githubToken
-      || req.headers['x-github-token']
+      || (req.headers['x-github-token'] as string | undefined)
       || process.env.GITHUB_TOKEN
       || '';
 
     // Merge token into ctx so ALL paths (local, SSE, API) can use it for tools
-    const reqCtx = { ...ctx, githubToken: token };
+    const reqCtx: AgentContext = { ...ctx, githubToken: token };
 
-    let messages;
+    let messages: ChatMessage[];
     if (req.body.messages) {
-      messages = req.body.messages;
+      messages = req.body.messages as ChatMessage[];
     } else if (req.body.message) {
-      messages = [{ role: 'user', content: req.body.message }];
+      messages = [{ role: 'user', content: req.body.message as string }];
     } else {
       res.status(400).json({ error: 'No message provided' });
       return;
@@ -275,14 +302,15 @@ function registerCopilotAgent(app, ctx) {
         const content = await handleCopilotAPIChat(messages, token, reqCtx);
         res.json({ role: 'assistant', content });
       } catch (err) {
-        const status = err.message.match(/Copilot API (\d+)/)?.[1];
+        const statusMatch = (err as Error).message.match(/Copilot API (\d+)/);
+        const status = statusMatch?.[1];
         if (status === '401' || status === '403') {
           // Token doesn't have Copilot access — fall back gracefully
-          console.warn('[copilot api] token rejected, using local mode:', err.message);
+          console.warn('[copilot api] token rejected, using local mode:', (err as Error).message);
           await handleLocalChat(messages, reqCtx, res);
         } else {
-          console.error('[copilot api error]', err.message);
-          res.status(500).json({ error: err.message });
+          console.error('[copilot api error]', (err as Error).message);
+          res.status(500).json({ error: (err as Error).message });
         }
       }
     } else {
@@ -294,7 +322,7 @@ function registerCopilotAgent(app, ctx) {
 // ---------------------------------------------------------------------------
 // Local chat — pattern-match → dispatch tools → format results
 // ---------------------------------------------------------------------------
-async function handleLocalChat(messages, ctx, res) {
+async function handleLocalChat(messages: ChatMessage[], ctx: AgentContext, res: Response): Promise<void> {
   try {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (!lastUserMsg) {
@@ -303,7 +331,7 @@ async function handleLocalChat(messages, ctx, res) {
     }
 
     const intents = detectIntent(lastUserMsg.content);
-    const sections = [];
+    const sections: string[] = [];
 
     for (const intent of intents) {
       const handler = handlers[intent.tool];
@@ -317,7 +345,7 @@ async function handleLocalChat(messages, ctx, res) {
         const output = result instanceof Promise ? await result : result;
         sections.push(String(output));
       } catch (err) {
-        sections.push(`**${intent.tool}** error: ${err.message}`);
+        sections.push(`**${intent.tool}** error: ${(err as Error).message}`);
       }
     }
 
@@ -325,14 +353,19 @@ async function handleLocalChat(messages, ctx, res) {
     res.json({ role: 'assistant', content });
   } catch (err) {
     console.error('[local chat error]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: (err as Error).message });
   }
 }
 
 // ---------------------------------------------------------------------------
 // SSE handler — Copilot Extensions protocol (requires valid GitHub token)
 // ---------------------------------------------------------------------------
-async function handleSSEChat(messages, token, ctx, res) {
+async function handleSSEChat(
+  messages: ChatMessage[],
+  token: string,
+  ctx: AgentContext,
+  res: Response,
+): Promise<void> {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -342,7 +375,7 @@ async function handleSSEChat(messages, token, ctx, res) {
     res.write(createAckEvent());
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     const intents = detectIntent(lastUserMsg?.content || '');
-    const sections = [];
+    const sections: string[] = [];
 
     for (const intent of intents) {
       const handler = handlers[intent.tool];
@@ -352,7 +385,7 @@ async function handleSSEChat(messages, token, ctx, res) {
         const output = result instanceof Promise ? await result : result;
         sections.push(String(output));
       } catch (err) {
-        sections.push(`**${intent.tool}** error: ${err.message}`);
+        sections.push(`**${intent.tool}** error: ${(err as Error).message}`);
       }
     }
 
@@ -365,44 +398,43 @@ async function handleSSEChat(messages, token, ctx, res) {
   try {
     res.write(createAckEvent());
 
-    const systemMessages = [{
+    const systemMessages: ChatMessage[] = [{
       role: 'system',
       content: `You are the Incident Command Center AI — an expert SRE copilot for a Spring Boot microservices e-commerce platform.
 5 services: eureka-server (8761), api-gateway (8080), customer-service (8081), inventory-service (8082), order-service (8083).
 Order flow: demo-ui → api-gateway → order-service → {customer-service, inventory-service}.
 Always use tools to get real data. Explain findings in terms of revenue impact.`,
     }];
-    let conversationMessages = [...systemMessages, ...messages];
+    let conversationMessages: ChatMessage[] = [...systemMessages, ...messages];
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const result = await prompt({
         token,
         model: 'gpt-4o',
-        messages: conversationMessages,
-        tools: TOOL_DEFINITIONS,
-        toolChoice: 'auto',
+        messages: conversationMessages as Parameters<typeof prompt>[0]['messages'],
+        tools: TOOL_DEFINITIONS as Parameters<typeof prompt>[0]['tools'],
       });
 
       const functionCalls = getFunctionCalls(result);
 
       if (!functionCalls || functionCalls.length === 0) {
-        const content = result.message?.content || 'Analysis complete — no additional output.';
+        const content = (result as { message?: { content?: string } }).message?.content || 'Analysis complete — no additional output.';
         res.write(createTextEvent(content));
         break;
       }
 
-      conversationMessages.push(result.message);
+      conversationMessages.push((result as { message: ChatMessage }).message);
 
       for (const fc of functionCalls) {
         const handler = handlers[fc.function.name];
-        let toolResult;
+        let toolResult: string;
         if (handler) {
           try {
-            const args = JSON.parse(fc.function.arguments);
+            const args = JSON.parse(fc.function.arguments) as Record<string, unknown>;
             const handlerResult = handler(args, ctx);
             toolResult = handlerResult instanceof Promise ? await handlerResult : handlerResult;
           } catch (err) {
-            toolResult = `Tool error: ${err.message}`;
+            toolResult = `Tool error: ${(err as Error).message}`;
           }
         } else {
           toolResult = `Unknown tool: ${fc.function.name}`;
@@ -417,10 +449,8 @@ Always use tools to get real data. Explain findings in terms of revenue impact.`
     res.end();
   } catch (err) {
     console.error('[copilot agent SSE error]', err);
-    res.write(createErrorsEvent([{ type: 'agent', code: 'AGENT_ERROR', message: err.message, identifier: 'incident-agent' }]));
+    res.write(createErrorsEvent([{ type: 'agent', code: 'AGENT_ERROR', message: (err as Error).message, identifier: 'incident-agent' }]));
     res.write(createDoneEvent());
     res.end();
   }
 }
-
-module.exports = { registerCopilotAgent, handleCopilotAPIChat };

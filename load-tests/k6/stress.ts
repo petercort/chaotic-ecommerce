@@ -1,8 +1,9 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, randomCustomerId, randomProductId, buildOrderPayload, JSON_HEADERS } from './config.js';
+import type { Options } from 'k6/options';
+import { BASE_URL, randomCustomerId, randomProductId, buildOrderPayload, JSON_HEADERS } from './config';
 
-export const options = {
+export const options: Options = {
   stages: [
     { duration: '1m', target: 100 },
     { duration: '5m', target: 150 },
@@ -15,12 +16,12 @@ export const options = {
   },
 };
 
-export default function () {
+export default function (): void {
   const r = http.post(
     `${BASE_URL}/api/orders`,
     buildOrderPayload(randomCustomerId(), randomProductId()),
     { headers: JSON_HEADERS }
   );
-  check(r, { 'ok': res => res.status < 500 });
+  check(r, { 'ok': (res) => res.status < 500 });
   sleep(0.2);
 }

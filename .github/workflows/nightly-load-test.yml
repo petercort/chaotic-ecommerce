@@ -25,12 +25,17 @@ jobs:
         run: |
           curl https://github.com/grafana/k6/releases/download/v0.52.0/k6-v0.52.0-linux-amd64.tar.gz -L | tar xvz --strip-components 1
           sudo mv k6 /usr/local/bin/k6
+      - name: Install load-test dependencies and build
+        working-directory: load-tests
+        run: |
+          npm ci
+          npm run build
       - name: Run smoke test
         working-directory: load-tests
-        run: k6 run k6/smoke.js
+        run: k6 run dist/smoke.js
       - name: Run baseline test
         working-directory: load-tests
-        run: k6 run --out json=results/baseline-${{ github.run_id }}.json k6/baseline.js
+        run: k6 run --out json=results/baseline-${{ github.run_id }}.json dist/baseline.js
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

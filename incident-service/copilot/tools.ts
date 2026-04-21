@@ -6,7 +6,24 @@
 // interact with the incident service.
 // ---------------------------------------------------------------------------
 
-const TOOL_DEFINITIONS = [
+export interface ToolFunction {
+  name: string;
+  description: string;
+  strict: boolean;
+  parameters: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+    additionalProperties: boolean;
+  };
+}
+
+export interface Tool {
+  type: 'function';
+  function: ToolFunction;
+}
+
+export const TOOL_DEFINITIONS: Tool[] = [
   {
     type: 'function',
     function: {
@@ -246,5 +263,3 @@ const TOOL_DEFINITIONS = [
     },
   },
 ];
-
-module.exports = { TOOL_DEFINITIONS };

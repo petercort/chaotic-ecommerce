@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2017"],
+    "strict": true,
+    "noEmit": true,
+    "types": ["k6"]
+  },
+  "include": ["k6/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

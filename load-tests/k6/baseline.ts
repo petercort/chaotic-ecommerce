@@ -1,14 +1,15 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, randomCustomerId, randomProductId, buildOrderPayload, JSON_HEADERS, DEFAULT_THRESHOLDS } from './config.js';
+import type { Options } from 'k6/options';
+import { BASE_URL, randomCustomerId, randomProductId, buildOrderPayload, JSON_HEADERS, DEFAULT_THRESHOLDS } from './config';
 
-export const options = {
+export const options: Options = {
   vus: 10,
   duration: '5m',
   thresholds: DEFAULT_THRESHOLDS,
 };
 
-export default function () {
+export default function (): void {
   const custId = randomCustomerId();
   const prodId = randomProductId();
 
@@ -22,7 +23,7 @@ export default function () {
     buildOrderPayload(custId, prodId),
     { headers: JSON_HEADERS }
   );
-  check(r, { 'order created': res => res.status === 201 });
+  check(r, { 'order created': (res) => res.status === 201 });
 
   sleep(1);
 }

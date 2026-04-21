@@ -1,8 +1,14 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { BASE_URL, JSON_HEADERS } from './config.js';
+import type { Options } from 'k6/options';
+import { BASE_URL, JSON_HEADERS } from './config';
 
-export const options = {
+interface Product {
+  id: number;
+  [key: string]: unknown;
+}
+
+export const options: Options = {
   vus: 20,
   duration: '5m',
   thresholds: {
@@ -12,17 +18,17 @@ export const options = {
   },
 };
 
-export default function () {
+export default function (): void {
   // Step 1: Browse products
   let r = http.get(`${BASE_URL}/api/products`, { tags: { name: 'list_products' } });
-  check(r, { 'products ok': res => res.status === 200 });
-  const products = r.json();
+  check(r, { 'products ok': (res) => res.status === 200 });
+  const products = r.json() as Product[] | null;
   if (!Array.isArray(products) || products.length === 0) return;
 
   // Step 2: Get a specific product
   const product = products[Math.floor(Math.random() * products.length)];
   r = http.get(`${BASE_URL}/api/products/${product.id}`, { tags: { name: 'get_product' } });
-  check(r, { 'product ok': res => res.status === 200 });
+  check(r, { 'product ok': (res) => res.status === 200 });
 
   sleep(0.5);
 
@@ -40,7 +46,7 @@ export default function () {
     }),
     { headers: JSON_HEADERS, tags: { name: 'create_order' } }
   );
-  check(r, { 'order created': res => res.status === 201 });
+  check(r, { 'order created': (res) => res.status === 201 });
 
   sleep(1);
 }

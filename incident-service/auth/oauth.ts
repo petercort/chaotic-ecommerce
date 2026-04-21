@@ -8,51 +8,53 @@
 //   POST /auth/logout         → destroy session
 // ---------------------------------------------------------------------------
 
-const express = require('express');
-const router = express.Router();
+import { Router } from 'express';
+import crypto from 'crypto';
+import type { Request, Response } from 'express';
+
+const router = Router();
 
 const CLIENT_ID     = process.env.GITHUB_CLIENT_ID;
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const SCOPES        = 'user:email read:user public_repo';
 
-// Validate OAuth is configured
-function isConfigured() {
+function isConfigured(): boolean {
   return Boolean(CLIENT_ID && CLIENT_SECRET);
 }
 
 // ---------------------------------------------------------------------------
 // Step 1 — redirect user to GitHub authorisation page
 // ---------------------------------------------------------------------------
-router.get('/github', (req, res) => {
+router.get('/github', (req: Request, res: Response) => {
   if (!isConfigured()) {
     return res.redirect('/login?error=oauth_not_configured');
   }
 
-  // Generate and store CSRF state
-  const state = require('crypto').randomBytes(16).toString('hex');
+  const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
 
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: CLIENT_ID!,
     scope: SCOPES,
     state,
     allow_signup: 'true',
   });
 
-  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
 // ---------------------------------------------------------------------------
 // Step 2 — GitHub redirects back with ?code=...&state=...
 // ---------------------------------------------------------------------------
-router.get('/github/callback', async (req, res) => {
-  const { code, state, error } = req.query;
+router.get('/github/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string | undefined;
+  const state = req.query.state as string | undefined;
+  const error = req.query.error as string | undefined;
 
   if (error) {
     return res.redirect(`/login?error=${encodeURIComponent(error)}`);
   }
 
-  // Validate CSRF state
   if (!state || state !== req.session.oauthState) {
     return res.redirect('/login?error=invalid_state');
   }
@@ -63,7 +65,6 @@ router.get('/github/callback', async (req, res) => {
   }
 
   try {
-    // Exchange code for access token
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
@@ -83,14 +84,17 @@ router.get('/github/callback', async (req, res) => {
       return res.redirect('/login?error=token_exchange_failed');
     }
 
-    const tokenData = await tokenRes.json();
+    const tokenData = await tokenRes.json() as {
+      access_token?: string;
+      error?: string;
+      error_description?: string;
+    };
 
     if (tokenData.error || !tokenData.access_token) {
       console.error('[oauth] token exchange error:', tokenData.error_description || tokenData.error);
       return res.redirect(`/login?error=${encodeURIComponent(tokenData.error || 'token_exchange_failed')}`);
     }
 
-    // Fetch the authenticated user's profile
     const userRes = await fetch('https://api.github.com/user', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`,
@@ -104,9 +108,14 @@ router.get('/github/callback', async (req, res) => {
       return res.redirect('/login?error=user_fetch_failed');
     }
 
-    const user = await userRes.json();
+    const user = await userRes.json() as {
+      id: number;
+      login: string;
+      name?: string;
+      avatar_url: string;
+      html_url: string;
+    };
 
-    // Store token and profile in session (token never sent to browser)
     req.session.githubToken = tokenData.access_token;
     req.session.user = {
       id: user.id,
@@ -117,21 +126,21 @@ router.get('/github/callback', async (req, res) => {
     };
 
     console.log(`[oauth] authenticated: ${user.login}`);
-    res.redirect('/');
+    return res.redirect('/');
   } catch (err) {
-    console.error('[oauth] callback error:', err.message);
-    res.redirect('/login?error=server_error');
+    console.error('[oauth] callback error:', (err as Error).message);
+    return res.redirect('/login?error=server_error');
   }
 });
 
 // ---------------------------------------------------------------------------
 // GET /auth/me — returns current user for the UI (no token exposed)
 // ---------------------------------------------------------------------------
-router.get('/me', (req, res) => {
+router.get('/me', (req: Request, res: Response) => {
   if (!req.session?.user) {
     return res.json({ authenticated: false, oauthConfigured: isConfigured() });
   }
-  res.json({
+  return res.json({
     authenticated: true,
     oauthConfigured: true,
     user: req.session.user,
@@ -141,11 +150,11 @@ router.get('/me', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /auth/logout — destroy session
 // ---------------------------------------------------------------------------
-router.post('/logout', (req, res) => {
+router.post('/logout', (req: Request, res: Response) => {
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
     res.redirect('/login');
   });
 });
 
-module.exports = router;
+export default router;

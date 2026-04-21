@@ -2,7 +2,7 @@
 description: Validates the severity label (sev-1, sev-2, sev-3) on newly opened or labeled issues against defined criteria. If the submitted severity is incorrect, the agent updates the label and posts a comment explaining the change.
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened, labeled, edited]
 permissions:
   contents: read
   issues: read

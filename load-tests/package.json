@@ -3,16 +3,20 @@
   "version": "1.0.0",
   "description": "k6 load tests for FIS Global e-commerce microservices",
   "scripts": {
-    "smoke":     "k6 run k6/smoke.js",
-    "baseline":  "k6 run k6/baseline.js",
-    "ramp-up":   "k6 run k6/ramp-up.js",
-    "stress":    "k6 run k6/stress.js",
-    "spike":     "k6 run k6/spike.js",
-    "soak":      "k6 run k6/soak.js",
-    "order-flow":"k6 run k6/order-flow.js",
-    "vt-bench":  "k6 run k6/virtual-threads-benchmark.js"
+    "build": "npx esbuild k6/smoke.ts k6/baseline.ts k6/ramp-up.ts k6/stress.ts k6/spike.ts k6/soak.ts k6/order-flow.ts k6/virtual-threads-benchmark.ts k6/setup/seed-data.ts --bundle --platform=neutral --target=es2017 --outdir=dist --outbase=k6 --external:k6 --external:k6/*",
+    "typecheck": "tsc --noEmit",
+    "smoke":      "npm run build && k6 run dist/smoke.js",
+    "baseline":   "npm run build && k6 run dist/baseline.js",
+    "ramp-up":    "npm run build && k6 run dist/ramp-up.js",
+    "stress":     "npm run build && k6 run dist/stress.js",
+    "spike":      "npm run build && k6 run dist/spike.js",
+    "soak":       "npm run build && k6 run dist/soak.js",
+    "order-flow": "npm run build && k6 run dist/order-flow.js",
+    "vt-bench":   "npm run build && k6 run dist/virtual-threads-benchmark.js"
   },
   "devDependencies": {
-    "@types/k6": "^0.54.0"
+    "@types/k6": "^0.54.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3"
   }
 }

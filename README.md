@@ -1,6 +1,6 @@
 # E-Commerce Microservices Demo
 
-A fully working e-commerce microservices application built with Spring Boot 3.5, Spring Cloud 2024, and Java 25. Originally a monolith refactored into five independent services using GitHub Copilot — now extended with Docker Compose, Playwright E2E tests, chaos engineering, and load testing.
+A fully working e-commerce microservices application built with **TypeScript and Node.js**. Originally a Java Spring Boot monolith, refactored into independent services using GitHub Copilot — extended with Docker Compose, Playwright E2E tests, chaos engineering, and load testing.
 
 ## Overview
 
@@ -8,31 +8,30 @@ Five services collaborate to handle customer management, product inventory, and 
 
 | Service | Port | Responsibility |
 |---------|------|----------------|
-| `eureka-server` | 8761 | Service registry (Netflix Eureka) |
-| `api-gateway` | 8080 | Edge router — single client entry point |
-| `customer-service` | 8081 | Customer CRUD, H2 in-memory DB |
-| `inventory-service` | 8082 | Product catalog + stock management, H2 in-memory DB |
-| `order-service` | 8083 | Order lifecycle, calls customer & inventory via OpenFeign |
-| `demo-ui` | 8090 | SPA frontend (Express + server-side proxy) — Docker container |
+| `api-gateway` | 8080 | Edge router — single client entry point, circuit breakers |
+| `customer-service` | 8081 | Customer CRUD, SQLite in-memory DB |
+| `inventory-service` | 8082 | Product catalog + stock management, SQLite in-memory DB |
+| `order-service` | 8083 | Order lifecycle + orchestration saga, calls customer & inventory via axios |
+| `demo-ui` | 8090 | SPA frontend (Express + server-side proxy) |
 
-All external traffic enters through the API Gateway on port **8080**. The demo UI on port **8090** proxies `/api/*` server-side to the gateway, so no CORS configuration is needed.
+All external traffic enters through the API Gateway on port **8080**. The demo UI on port **8090** proxies `/api/*` server-side to the gateway, so no CORS exposure to the browser. Service discovery uses Docker Compose container DNS — no separate registry needed.
 
 ## Project Structure
 
 ```
-copilot-spring-boot-demo/
-├── eureka-server/          # Service registry — port 8761
-├── api-gateway/            # Edge router — port 8080
-├── customer-service/       # Customer CRUD — port 8081
-├── inventory-service/      # Product catalog — port 8082
-├── order-service/          # Order management — port 8083
+copilot-typescript-demo/
+├── api-gateway/            # Edge router — port 8080 (Express + axios + opossum)
+├── customer-service/       # Customer CRUD — port 8081 (Express + SQLite)
+├── inventory-service/      # Product catalog — port 8082 (Express + SQLite)
+├── order-service/          # Order management — port 8083 (Express + SQLite + axios)
 │
 ├── demo-ui/                # SPA frontend (Express + proxy) — port 8090
-│   ├── Dockerfile          # Node 25 Alpine, API_GATEWAY_URL env var
-│   ├── server.js           # Serves static UI + proxies /api/* to gateway
+│   ├── Dockerfile          # Node 20 multi-stage, API_GATEWAY_URL env var
+│   ├── server.ts           # Serves static UI + proxies /api/* to gateway
 │   └── public/index.html   # Single-page app (Customers / Products / Orders tabs)
+├── incident-service/       # GitHub Copilot Extensions agent service
 ├── e2e/                    # Playwright E2E test project (20 tests, Chromium)
-├── load-tests/             # k6 + Gatling load test suite
+├── load-tests/             # k6 TypeScript load test suite (esbuild pipeline)
 ├── scripts/                # Helper scripts (assert, monitor, restart, CLI test runner)
 │   └── playwright-cli-test.sh  # playwright-cli runner — 18 DOM assertions + 5 screenshots
 ├── scenarios/              # Chaos experiment runbooks (S1–S8)
@@ -40,9 +39,8 @@ copilot-spring-boot-demo/
 │
 ├── docker-compose.yml              # Full stack (all 5 services + demo-ui)
 ├── docker-compose.monitoring.yml   # Prometheus + Grafana observability stack
-├── .env                            # Default port/profile config for Docker
+├── .env                            # Default port config for Docker
 │
-├── .claude/skills/playwright-cli/  # playwright-cli Copilot skills (auto-installed)
 ├── .github/workflows/
 │   ├── e2e.yml                  # Playwright E2E CI
 │   ├── chaos-tests.yml          # Weekly chaos suite
@@ -50,9 +48,11 @@ copilot-spring-boot-demo/
 │   ├── nightly-load-test.yml    # Nightly k6 load test
 │   └── pr-smoke-test.yml        # PR k6 smoke gate
 │
-├── build.sh                # Build all services (Temurin JDK 21)
+├── build.sh                # Build all services (npm ci + tsc)
 ├── run.sh                  # Start all services locally
 └── docs/                   # Architecture docs + implementation plans
+    ├── ARCHITECTURE.md
+    ├── QUICKSTART.md
     ├── DOCKER_COMPOSE_PLAN.md
     ├── PLAYWRIGHT_UI_TESTING_PLAN.md
     ├── CHAOS_TESTING_PLAN.md
@@ -61,9 +61,8 @@ copilot-spring-boot-demo/
 
 ## Prerequisites
 
-- **Java 21** (Temurin recommended — see `build.sh`)
-- **Maven 3.6+**
-- **Node.js 18+** (for demo-ui and e2e tests)
+- **Node.js 20+** (`node --version`)
+- **npm 9+** (bundled with Node.js)
 - **Docker** (for Docker Compose and monitoring stack)
 - **k6** (for load tests — `brew install k6`)
 
@@ -75,7 +74,7 @@ copilot-spring-boot-demo/
 ./build.sh
 ```
 
-> Uses Temurin JDK 21 automatically. The parent POM targets Java 25 syntax but `build.sh` overrides the compiler to 21 for compatibility.
+Runs `npm ci && npm run build` (TypeScript → `dist/`) in each service.
 
 ### Start All Services
 
@@ -83,11 +82,11 @@ copilot-spring-boot-demo/
 ./run.sh
 ```
 
-Startup order: Eureka (15 s) → customer/inventory/order (parallel) → API Gateway. All services are running after ~60 s.
+Startup order: customer + inventory (parallel) → order-service → api-gateway → demo-ui. All services are running in ~5 s.
 
 ```
-Eureka Dashboard:  http://localhost:8761
-API Gateway:       http://localhost:8080
+API Gateway:  http://localhost:8080
+Demo UI:      http://localhost:8090
 ```
 
 ### Stop All Services
@@ -141,7 +140,7 @@ curl -X POST http://localhost:8080/api/orders \
 
 ## Seed Data
 
-Each service seeds data on startup (H2 in-memory — data resets on restart):
+Each service seeds data on startup (SQLite in-memory — data resets on restart):
 
 | Service | Data |
 |---------|------|
@@ -158,14 +157,33 @@ Run the full stack in containers — no local Java or Maven required.
 ### Quick Start
 
 ```bash
+# Build all images and start everything
+./start.sh
+
+# Start with Prometheus + Grafana monitoring
+./start.sh --monitoring
+
+# Skip rebuild (use cached images)
+./start.sh --no-build
+
+# Stop all containers
+./start.sh --down
+
+# Tail logs
+./start.sh --logs
+```
+
+Or using Docker Compose directly:
+
+```bash
 # Build all images (first time: ~5–10 min, subsequent: seconds with cache)
 docker compose build
 
 # Start all services including the demo UI
 docker compose up -d
 
-# Watch Eureka registration (wait until all 4 clients appear)
-docker compose logs -f eureka-server
+# Verify all services are healthy
+docker compose ps
 
 # Verify API Gateway is routing
 curl http://localhost:8080/api/customers
@@ -173,25 +191,28 @@ curl http://localhost:8080/api/customers
 # Open the demo UI
 open http://localhost:8090
 
-# Tear down (H2 data is lost — in-memory only)
+# Tear down (SQLite data is lost — in-memory only)
 docker compose down
 ```
 
 ### How It Works
 
 Each service has a `Dockerfile` using a two-stage build:
-1. **Build stage** — `maven:3.9-eclipse-temurin-21` compiles the JAR
-2. **Runtime stage** — `eclipse-temurin:21-jre-alpine` runs it (~200 MB image)
+1. **Build stage** — `node:20-slim` installs deps + compiles TypeScript (`tsc`)
+2. **Runtime stage** — `node:20-slim` installs only production deps, runs `node dist/index.js` (~200 MB image)
 
-The `demo-ui` service uses a single-stage Node 25 Alpine image. It proxies all `/api/*` requests server-side to `http://api-gateway:8080` (container-to-container), so there is no CORS exposure to the browser.
+The `demo-ui` service proxies all `/api/*` requests server-side to `http://api-gateway:8080` (container-to-container), so there is no CORS exposure to the browser.
 
 The `docker-compose.yml` starts services in dependency order using health checks:
 
 ```
-eureka-server (healthy) → customer/inventory/order-service (healthy) → api-gateway
+customer-service (healthy) ─┐
+                             ├─→ order-service (healthy) ─┐
+inventory-service (healthy) ─┘                            ├─→ api-gateway → demo-ui
+                                                          
 ```
 
-Services find each other by container name (e.g. `http://eureka-server:8761/eureka/`) via the `application-docker.*` Spring profile, activated by `SPRING_PROFILES_ACTIVE=docker`.
+Services find each other by Docker Compose container name (e.g. `http://customer-service:8081`) via environment variables injected at runtime.
 
 ### Real-Time Monitoring Stack
 
@@ -226,7 +247,6 @@ Polls all 5 service health endpoints every 2 s and prints a colour-coded status 
 
 | Name | URL |
 |------|-----|
-| eureka-server | http://eureka-server:8761/actuator/health |
 | api-gateway | http://api-gateway:8080/actuator/health |
 | customer-service | http://customer-service:8081/actuator/health |
 | inventory-service | http://inventory-service:8082/actuator/health |
@@ -238,7 +258,6 @@ Set **Heartbeat Interval** to 10 s for chaos-test sensitivity.
 
 Edit `.env` to override ports:
 ```env
-EUREKA_SERVER_PORT=8761
 API_GATEWAY_PORT=8080
 CUSTOMER_SERVICE_PORT=8081
 INVENTORY_SERVICE_PORT=8082
@@ -341,10 +360,9 @@ Resilience experiments that validate the system's behaviour under failure condit
 ### Prerequisites
 
 Resilience patterns are already wired in:
-- **Circuit breakers** on both Feign clients in `order-service` (Resilience4j)
-- **Retry** (3 attempts, exponential backoff) on customer + inventory calls
-- **Feign timeouts** (2 s connect / 5 s read)
-- **Gateway timeouts** (2 s connect / 10 s response) + CircuitBreaker filters
+- **Circuit breakers** with [opossum](https://github.com/nodeshift/opossum) on all downstream calls in `order-service` and `api-gateway`
+- **Per-call timeouts** (5 s) on customer + inventory calls from order-service
+- **Compensation logic** in order-service saga (restores reserved stock on any failure)
 
 ### Quick Start
 
@@ -391,32 +409,12 @@ The monitoring stack auto-provisions a **Chaos Testing Overview** dashboard with
 
 ### Enabling Chaos Monkey
 
-Start any service with the `chaos-monkey` Spring profile to enable live fault injection:
-
-```bash
-cd inventory-service
-SPRING_PROFILES_ACTIVE=chaos-monkey mvn spring-boot:run
-```
-
-Then control faults at runtime via the Actuator REST API:
-
-```bash
-# Enable latency assault (1–3 s random delay on 20% of calls)
-curl -X POST http://localhost:8082/actuator/chaosmonkey/assaults \
-  -H "Content-Type: application/json" \
-  -d '{"latencyActive": true, "latencyRangeStart": 1000, "latencyRangeEnd": 3000}'
-
-# Check circuit breaker state in order-service
-curl -s http://localhost:8083/actuator/health | python3 -m json.tool
-
-# Disable chaos
-curl -X POST http://localhost:8082/actuator/chaosmonkey/disable
-```
+> **Note:** Chaos Monkey for Spring Boot is no longer available (services are now TypeScript/Node.js). Use Toxiproxy scenarios (S3, S6, S8) for network-level fault injection, or `docker compose stop <service>` / `docker compose start <service>` for service kill/restart experiments.
 
 ### Helper Scripts
 
 ```bash
-scripts/verify-steady-state.sh   # Assert all 5 services + 3 routes are healthy
+scripts/verify-steady-state.sh   # Assert all 4 services + 3 routes are healthy
 scripts/traffic-monitor.sh       # Continuously log HTTP status + response time to CSV
 scripts/watch-chaos.sh           # Colour-coded live service health table (polls every 2 s)
 scripts/assert.sh                # Sourced by scenarios — http/response/service assertions
@@ -440,32 +438,31 @@ Synthetic benchmarks using [k6](https://k6.io) (primary) and [Gatling](https://g
 ```bash
 # Install k6
 brew install k6   # macOS
-# or: docker run --rm -i grafana/k6 run - < load-tests/k6/smoke.js
 
 # Start all microservices
-./run.sh && sleep 60
+docker compose up -d
 
-# Run the smoke test (1 VU × 1 min — verify everything works)
-k6 run load-tests/k6/smoke.js
+# Build and run the smoke test (1 VU × 1 min — verify everything works)
+cd load-tests && npm install && npm run smoke
 
 # Run the baseline (10 VUs × 5 min — establish benchmarks)
-k6 run load-tests/k6/baseline.js
+npm run baseline
 ```
 
 ### Test Scenarios
 
 | Script | VUs | Duration | Purpose |
 |--------|-----|----------|---------|
-| `smoke.js` | 1 | 1 min | Sanity check all endpoints |
-| `baseline.js` | 10 | 5 min | Establish normal performance |
-| `ramp-up.js` | 0→100 | 10 min | Find capacity ceiling |
-| `stress.js` | 100→200 | 10 min | Behaviour beyond capacity |
-| `spike.js` | 10→100→10 | ~2 min | Sudden burst + recovery |
-| `soak.js` | 30 | 60 min | Memory leaks, H2 growth |
-| `order-flow.js` | 20 | 5 min | Realistic browse → order user journey |
-| `virtual-threads-benchmark.js` | 0→150 | 6 min | JDK 25 VT on/off comparison |
+| `smoke.ts` | 1 | 1 min | Sanity check all endpoints |
+| `baseline.ts` | 10 | 5 min | Establish normal performance |
+| `ramp-up.ts` | 0→100 | 10 min | Find capacity ceiling |
+| `stress.ts` | 100→200 | 10 min | Behaviour beyond capacity |
+| `spike.ts` | 10→100→10 | ~2 min | Sudden burst + recovery |
+| `soak.ts` | 30 | 60 min | Memory leaks, SQLite growth |
+| `order-flow.ts` | 20 | 5 min | Realistic browse → order user journey |
+| `virtual-threads-benchmark.ts` | 0→150 | 6 min | Concurrency benchmark |
 
-All scripts use `npm run <name>` from the `load-tests/` directory:
+Tests are written in TypeScript and bundled with esbuild. All scripts use `npm run <name>` from the `load-tests/` directory:
 
 ```bash
 cd load-tests
@@ -477,24 +474,11 @@ npm run order-flow
 ### Virtual Threads Benchmark
 
 ```bash
-# Run 1: virtual threads ON (default — spring.threads.virtual.enabled=true)
-k6 run load-tests/k6/virtual-threads-benchmark.js
-
-# Run 2: restart order-service with VT disabled, then:
-k6 run load-tests/k6/virtual-threads-benchmark.js
+# Run concurrency benchmark (measures Node.js async throughput at high load)
+cd load-tests && npm run virtual-threads-benchmark
 ```
 
-Compare `order_duration_ms` p95/p99 between runs to quantify the VT advantage at high concurrency.
-
-### Gatling (HTML Reports)
-
-```bash
-cd load-tests
-mvn gatling:test
-# → opens target/gatling/*/index.html with percentile charts
-```
-
-The `OrderCreationSimulation` runs a realistic ramp: browse products → place order → verify order. Assertions: `p99 < 500 ms`, `>99% success`.
+Compare `order_duration_ms` p95/p99 at different VU counts to understand throughput limits.
 
 ### Performance SLOs
 
@@ -518,20 +502,19 @@ The `OrderCreationSimulation` runs a realistic ramp: browse products → place o
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Java 25 (built with JDK 21 for Lombok compat) |
-| Framework | Spring Boot 3.5.0, Spring Cloud 2024.0.1 |
-| Service registry | Netflix Eureka |
-| API Gateway | Spring Cloud Gateway |
-| Inter-service calls | OpenFeign (`lb://service-name`) |
-| Resilience | Resilience4j (circuit breaker, retry) |
-| Database | H2 in-memory per service |
-| Concurrency | Virtual threads (`spring.threads.virtual.enabled=true`) |
-| Containers | Docker, Docker Compose (6 services incl. demo-ui) |
+| Language | TypeScript 5, Node.js 20 |
+| Framework | Express.js (all services) |
+| API Gateway | Express + axios proxying + opossum circuit breakers |
+| Inter-service calls | axios with per-call opossum circuit breakers |
+| Resilience | opossum (circuit breaker, timeout) + saga compensation |
+| Database | better-sqlite3 in-memory per service |
+| Validation | zod |
+| Containers | Docker (node:20-slim multi-stage), Docker Compose (5 services + demo-ui) |
 | Frontend | Express.js SPA with server-side API proxy |
 | E2E testing | Playwright spec runner + playwright-cli agent runner |
-| Load testing | k6, Gatling |
-| Chaos engineering | Chaos Monkey for Spring Boot, Toxiproxy (8 scenarios) |
-| Observability | Spring Boot Actuator, Prometheus, Grafana |
+| Load testing | k6 (TypeScript, bundled with esbuild) |
+| Chaos engineering | Toxiproxy (8 scenarios), docker compose stop/start |
+| Observability | `/actuator/health` endpoints, Prometheus, Grafana |
 | CI/CD | GitHub Actions |
 
 ## Documentation

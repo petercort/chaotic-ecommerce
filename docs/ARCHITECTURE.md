@@ -473,38 +473,65 @@ Scale: Replicate individual services as needed
 
 ## Technology Stack
 
-### Current (Monolith)
-- **Framework**: Spring Boot 3.2.0
-- **Language**: Java 17
-- **Database**: H2 (in-memory)
-- **ORM**: Spring Data JPA / Hibernate
-- **Build**: Maven
-- **API**: REST (Spring Web MVC)
+### Current (Microservices — TypeScript/Node.js)
+- **Language**: TypeScript 5, Node.js 20
+- **Framework**: Express.js
+- **Database**: better-sqlite3 (in-memory per service)
+- **Validation**: zod
+- **HTTP client**: axios (order-service → customer/inventory)
+- **Circuit breaker**: opossum
+- **Build**: tsc (services), esbuild (k6 load tests)
+- **API**: REST (Express)
 
-### Future (Microservices)
-Same stack per service, plus:
-- **Communication**: RestTemplate / WebClient
-- **Resilience**: Resilience4j (circuit breakers)
-- **Discovery**: Spring Cloud Netflix Eureka (optional)
-- **Gateway**: Spring Cloud Gateway (optional)
-- **Tracing**: Spring Cloud Sleuth + Zipkin (optional)
-- **Messaging**: Apache Kafka / RabbitMQ (optional)
-- **Containerization**: Docker
-- **Orchestration**: Kubernetes (optional)
+### Key Design Patterns (TypeScript)
 
----
+#### 1. Route Handler Pattern
+Each service has route handlers:
+```typescript
+router.get('/api/customers', (req, res) => {
+  const customers = db.prepare('SELECT * FROM customers').all();
+  res.json(customers.map(rowToCustomer));
+});
+```
 
-## Next Steps
+#### 2. SQLite In-Memory Database
+Each service manages its own in-memory database:
+```typescript
+const db = new Database(':memory:');
+db.exec(`CREATE TABLE customers (...)`);
+```
 
-1. **Review the code**: Understand the current implementation
-2. **Follow DEMO_SCRIPT.md**: Step-by-step refactoring guide
-3. **Use COPILOT_PROMPTS.md**: Leverage GitHub Copilot
-4. **Test thoroughly**: Use API_EXAMPLES.md
-5. **Experiment**: Try advanced patterns
+#### 3. Saga Orchestration (order-service)
+Order creation coordinates across services with compensation:
+```typescript
+// Reserve stock for each item
+for (const item of items) {
+  const ok = await reserveStock(item.productId, item.quantity);
+  if (!ok) {
+    // Compensate: restore already-reserved stock
+    for (const reserved of reservedItems) {
+      await restoreStock(reserved.productId, reserved.quantity);
+    }
+    throw new Error('Insufficient stock');
+  }
+  reservedItems.push(item);
+}
+```
 
-## References
+#### 4. Circuit Breaker Pattern (opossum)
+Individual circuit breakers protect each downstream call:
+```typescript
+const getCustomerBreaker = new CircuitBreaker(
+  (id: number) => axios.get(`${CUSTOMER_SERVICE_URL}/api/customers/${id}`),
+  { timeout: 5000, errorThresholdPercentage: 50 }
+);
+```
 
-- [Microservices Patterns](https://microservices.io/)
-- [Domain-Driven Design](https://martinfowler.com/bliki/DomainDrivenDesign.html)
-- [Spring Boot Documentation](https://spring.io/projects/spring-boot)
-- [The Twelve-Factor App](https://12factor.net/)
+#### 5. Zod Validation
+Request bodies validated with zod schemas:
+```typescript
+const CreateOrderSchema = z.object({
+  customerId: z.number(),
+  items: z.array(z.object({ productId: z.number(), quantity: z.number().min(1) })).min(1),
+});
+```

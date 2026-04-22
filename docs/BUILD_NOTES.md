@@ -1,161 +1,122 @@
-# Build Configuration Notes
+# Build Notes
 
-## Java Version Requirement
+## Runtime Requirements
 
-This project requires **Java 17** to build and run successfully.
-
-### Why Java 17?
-
-The project was originally configured for Java 17, which is the baseline LTS version supported by Spring Boot 3.2.0. While the system may have Java 21 installed, we encountered compiler plugin compatibility issues (TypeTag::UNKNOWN errors) when attempting to build with Java 21.
-
-### Solution
-
-The project includes convenience scripts that automatically detect and use Java 17:
+This project requires **Node.js 20+** to build and run.
 
 ```bash
-# Build the project
+node --version   # must be >= 20
+npm --version    # must be >= 9
+```
+
+## Building All Services
+
+```bash
 ./build.sh
-
-# Run the application
-./run.sh
 ```
 
-### Manual Build/Run
+This runs `npm ci && npm run build` in each service directory:
+- `customer-service/`
+- `inventory-service/`
+- `order-service/`
+- `api-gateway/`
+- `demo-ui/`
 
-If you prefer to build/run manually:
+TypeScript is compiled to `dist/` in each service via `tsc`.
+
+## Building a Single Service
 
 ```bash
-# Set JAVA_HOME to Java 17
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-
-# Build
-mvn clean install
-
-# Run
-mvn spring-boot:run
+cd customer-service
+npm ci            # install deps (uses package-lock.json)
+npm run build     # tsc → dist/
 ```
 
-### Installing Java 17
+## Type-Checking Only (no output)
 
-If you don't have Java 17 installed:
-
-**macOS (Homebrew):**
 ```bash
-brew install --cask temurin@17
+cd customer-service
+npx tsc --noEmit
 ```
 
-**Windows:**
-- Download from [Adoptium](https://adoptium.net/temurin/releases/?version=17)
+## Development Mode (hot reload)
 
-**Linux:**
 ```bash
-# Ubuntu/Debian
-sudo apt install openjdk-17-jdk
-
-# RHEL/CentOS/Fedora
-sudo yum install java-17-openjdk-devel
+cd customer-service
+npm run dev       # tsx watch src/index.ts
 ```
 
-## Maven Configuration
+## Starting a Service
 
-The project uses:
-- **maven-compiler-plugin 3.13.0** with Java 17 release target
-- **Lombok 1.18.30** configured as an annotation processor
-- **Spring Boot 3.2.0** parent POM
+```bash
+cd customer-service
+node dist/index.js
+```
 
-### Key pom.xml Settings
+Or via npm:
+```bash
+npm start
+```
 
-```xml
-<properties>
-    <java.version>17</java.version>
-    <lombok.version>1.18.30</lombok.version>
-</properties>
+## Docker Builds
 
-<build>
-    <plugins>
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.13.0</version>
-            <configuration>
-                <release>17</release>
-                <annotationProcessorPaths>
-                    <path>
-                        <groupId>org.projectlombok</groupId>
-                        <artifactId>lombok</artifactId>
-                        <version>${lombok.version}</version>
-                    </path>
-                </annotationProcessorPaths>
-            </configuration>
-        </plugin>
-    </plugins>
-</build>
+Each service uses a two-stage `node:20-slim` Dockerfile:
+
+```dockerfile
+# Stage 1: Build TypeScript
+FROM node:20-slim AS builder
+RUN apt-get update && apt-get install -y python3 make g++   # for better-sqlite3
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json src/ ./
+RUN npm run build
+
+# Stage 2: Runtime
+FROM node:20-slim AS runtime
+RUN apt-get update && apt-get install -y python3 make g++   # native module rebuild
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+CMD ["node", "dist/index.js"]
+```
+
+> **Why python3/make/g++?** `better-sqlite3` is a native Node.js addon that must be compiled for the target architecture. Both stages need build tools because `npm ci --omit=dev` rebuilds native modules from source.
+
+The `api-gateway` and `demo-ui` have no native modules and use `node:20-alpine` for a smaller image.
+
+## k6 Load Tests
+
+The `load-tests/` directory uses **esbuild** (not tsc) to bundle TypeScript for the k6 runtime:
+
+```bash
+cd load-tests
+npm ci
+npm run build    # esbuild bundles k6/*.ts → dist/*.js
+npm run smoke    # build + k6 run dist/smoke.js
 ```
 
 ## Troubleshooting
 
-### "TypeTag::UNKNOWN" Error
+### TypeScript Error: `moduleResolution: "bundler"` incompatible
+If you see errors about module resolution, ensure `tsconfig.json` uses `"moduleResolution": "node"` (not `"bundler"`) when `"module"` is `"CommonJS"`.
 
-If you see this error, you're likely using the wrong Java version. Ensure JAVA_HOME points to Java 17:
+### `better-sqlite3` Build Errors in Docker
+Ensure both builder and runtime stages use the same base image family (`node:20-slim`) and both install build tools (`python3 make g++`).
 
+### Service Can't Connect to Downstream
+When running locally (not Docker), set the service URL env vars explicitly:
 ```bash
-java -version  # Should show Java 17.x.x
-echo $JAVA_HOME  # Should point to JDK 17
+CUSTOMER_SERVICE_URL=http://localhost:8081 node dist/index.js
 ```
 
-### Lombok Annotations Not Processed
-
-If you see compilation errors about missing getters/setters, the Lombok annotation processor may not be configured correctly. Ensure:
-
-1. Lombok dependency is in pom.xml
-2. The maven-compiler-plugin has `annotationProcessorPaths` configured
-3. Your IDE has Lombok plugin installed (for IDE support)
+The `run.sh` script handles this automatically.
 
 ## Verification
 
-After a successful build, you should see:
-
-```
-[INFO] BUILD SUCCESS
-[INFO] ------------------------------------------------------------------------
-[INFO] Total time:  XX.XXX s
-[INFO] Finished at: YYYY-MM-DDTHH:MM:SS
-[INFO] ------------------------------------------------------------------------
-```
-
-The application JAR will be created at:
-```
-target/ecommerce-monolith-1.0.0-SNAPSHOT.jar
-```
-
-## Running the Application
-
-Once built, start the application:
-
+After building, type-check all services:
 ```bash
-./run.sh
+for svc in customer-service inventory-service order-service api-gateway demo-ui; do
+  echo -n "$svc: "
+  (cd $svc && npx tsc --noEmit && echo "✓") || echo "✗ FAILED"
+done
 ```
-
-Or manually:
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 17) mvn spring-boot:run
-```
-
-The application will be available at:
-- **REST API**: http://localhost:8080/api
-- **H2 Console**: http://localhost:8080/h2-console
-
-### Sample API Endpoints
-
-```bash
-# Get all customers
-curl http://localhost:8080/api/customers
-
-# Get all products  
-curl http://localhost:8080/api/products
-
-# Get all orders
-curl http://localhost:8080/api/orders
-```
-
-See `API_EXAMPLES.md` for comprehensive API testing examples.

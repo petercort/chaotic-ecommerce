@@ -1,109 +1,109 @@
 services:
   eureka-server:
     build:
-      context: .
-      dockerfile: eureka-server/Dockerfile
+      context: ./eureka-server
     container_name: eureka-server
     ports:
-      - "${EUREKA_SERVER_PORT:-8761}:8761"
-    environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      - "8761:8761"
     networks:
       - ecommerce-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8761/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 30s
-
-  api-gateway:
-    build:
-      context: .
-      dockerfile: api-gateway/Dockerfile
-    container_name: api-gateway
-    ports:
-      - "${API_GATEWAY_PORT:-8080}:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
-    networks:
-      - ecommerce-net
-    depends_on:
-      eureka-server:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 45s
+      start_period: 20s
 
   customer-service:
     build:
-      context: .
-      dockerfile: customer-service/Dockerfile
+      context: ./customer-service
     container_name: customer-service
     ports:
       - "${CUSTOMER_SERVICE_PORT:-8081}:8081"
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_HOST: eureka-server
     networks:
       - ecommerce-net
     depends_on:
       eureka-server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8081/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 45s
+      start_period: 20s
 
   inventory-service:
     build:
-      context: .
-      dockerfile: inventory-service/Dockerfile
+      context: ./inventory-service
     container_name: inventory-service
     ports:
       - "${INVENTORY_SERVICE_PORT:-8082}:8082"
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_HOST: eureka-server
     networks:
       - ecommerce-net
     depends_on:
       eureka-server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8082/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 45s
+      start_period: 20s
 
   order-service:
     build:
-      context: .
-      dockerfile: order-service/Dockerfile
+      context: ./order-service
     container_name: order-service
     ports:
       - "${ORDER_SERVICE_PORT:-8083}:8083"
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      CUSTOMER_SERVICE_URL: http://customer-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
+      EUREKA_HOST: eureka-server
     networks:
       - ecommerce-net
     depends_on:
-      eureka-server:
+      customer-service:
+        condition: service_healthy
+      inventory-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8083/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 45s
+      start_period: 20s
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "${API_GATEWAY_PORT:-8080}:8080"
+    environment:
+      CUSTOMER_SERVICE_URL: http://customer-service:8081
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
+      ORDER_SERVICE_URL: http://order-service:8083
+      EUREKA_HOST: eureka-server
+    networks:
+      - ecommerce-net
+    depends_on:
+      customer-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   demo-ui:
     build:

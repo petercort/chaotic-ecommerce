@@ -5,46 +5,38 @@ Follow these steps to get the demo application running quickly.
 ## Prerequisites Check
 
 Make sure you have:
-- [ ] Java 17 or higher installed (`java -version`)
-- [ ] Maven 3.6+ installed (`mvn -version`)
+- [ ] Node.js 20+ installed (`node --version`)
+- [ ] npm 9+ installed (`npm --version`)
 - [ ] Git installed (`git --version`)
 - [ ] GitHub Copilot enabled in your IDE
 
-## 1. Quick Start (5 minutes)
+## 1. Quick Start with Docker (Recommended — 5 minutes)
 
-### Clone and Build
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd copilot-spring-boot-demo
+cd copilot-typescript-demo
 
-# Build the project
-mvn clean install
+# Build all images and start the full stack
+docker compose up --build -d
 
-# Run the application
-mvn spring-boot:run
+# Verify all services are healthy
+docker compose ps
+
+# Open the demo UI
+open http://localhost:8090
 ```
 
-### Verify It's Running
+### Test the API
+
 ```bash
-# Test the API
+# List seeded customers
 curl http://localhost:8080/api/customers
 
-# You should see 3 customers in JSON format
-```
+# List seeded products
+curl http://localhost:8080/api/products
 
-### Access the Database Console
-Open your browser to: http://localhost:8080/h2-console
-
-Credentials:
-- JDBC URL: `jdbc:h2:mem:ecommercedb`
-- Username: `sa`
-- Password: (leave empty)
-
-## 2. Try the API (5 minutes)
-
-### Create an Order
-```bash
+# Create an order
 curl -X POST http://localhost:8080/api/orders \
   -H "Content-Type: application/json" \
   -d '{
@@ -58,93 +50,85 @@ curl -X POST http://localhost:8080/api/orders \
   }'
 ```
 
-### View Orders
+## 2. Quick Start Locally (requires Node.js 20+)
+
 ```bash
-curl http://localhost:8080/api/orders
+# Build all TypeScript services
+./build.sh
+
+# Start all services (opens ports 8080–8083, 8090)
+./run.sh
+
+# Stop all services
+kill $(cat /tmp/ecommerce-pids.txt)
 ```
 
-### Check Product Stock
-```bash
-curl http://localhost:8080/api/products/1
-```
+> **Note:** Service URLs default to `http://localhost:808X` when running locally. The `run.sh` script injects the correct `CUSTOMER_SERVICE_URL` / `INVENTORY_SERVICE_URL` / `ORDER_SERVICE_URL` environment variables automatically.
 
-## 3. Explore the Code (10 minutes)
+## 3. Explore the Code
 
 Open the project in your IDE and explore:
 
 ### Key Files to Review
-1. **Main Application**: `src/main/java/com/fisglobal/demo/EcommerceApplication.java`
-2. **Customer Domain**: `src/main/java/com/fisglobal/demo/customer/`
-3. **Order Service**: `src/main/java/com/fisglobal/demo/order/service/OrderService.java`
-   - Notice the tight coupling with `CustomerService` and `ProductService`
-4. **Configuration**: `src/main/resources/application.properties`
+1. **Customer Service**: `customer-service/src/` — Express routes, SQLite schema, seed data
+2. **Inventory Service**: `inventory-service/src/` — Product catalog + reserve/restore logic
+3. **Order Service**: `order-service/src/` — Orchestration saga with compensation
+4. **API Gateway**: `api-gateway/src/index.ts` — Axios proxying + opossum circuit breakers
+5. **Shared types**: Each service has its own `src/types.ts`
 
 ### Architecture Observations
-- All domains in one application
-- Shared database (H2 in-memory)
-- Direct method calls between services
-- Single deployment unit
+- All services are independent Node.js/Express processes
+- Each service has its own SQLite in-memory database (data resets on restart)
+- `order-service` calls `customer-service` and `inventory-service` via axios with circuit breakers
+- Service discovery is handled by Docker Compose DNS (no registry needed)
 
-## 4. Next Steps
+## 4. Run the Tests
 
-Choose your path:
+```bash
+# Playwright E2E tests (requires services running)
+cd e2e && npm install && npx playwright install chromium
+npx playwright test
 
-### Path A: Follow the Demo Script
-Read **DEMO_SCRIPT.md** for a guided walkthrough of splitting this into microservices.
-
-### Path B: Use Copilot Prompts Directly
-Jump to **COPILOT_PROMPTS.md** and start extracting services using the provided prompts.
-
-### Path C: Experiment on Your Own
-Try these exercises:
-1. Add a new customer via the API
-2. Create an order and watch the stock decrease
-3. Cancel an order and watch the stock restore
-4. Look at the logs to understand the flow
+# k6 load tests
+cd load-tests && npm install && npm run smoke
+```
 
 ## 5. Common Issues
 
-### Port 8080 Already in Use
+### Port Already in Use
 ```bash
-# Kill the process using port 8080 (macOS/Linux)
+# Kill process on port 8080
 lsof -ti:8080 | xargs kill -9
-
-# Or change the port in application.properties
-server.port=8081
 ```
 
-### Maven Build Fails
+### TypeScript Build Fails
 ```bash
-# Clean and rebuild
-mvn clean install -U
+# Rebuild a specific service
+cd customer-service && npm ci && npm run build
 
-# Skip tests if needed
-mvn clean install -DskipTests
+# Type-check only (no output)
+npx tsc --noEmit
 ```
 
-### IDE Not Recognizing Project
+### Service Won't Start
 ```bash
-# Reimport Maven project in your IDE
-# IntelliJ: File → Invalidate Caches and Restart
-# VS Code: Reload Window (Cmd+Shift+P → "Reload Window")
+# Check logs for a specific service (Docker)
+docker compose logs customer-service
+
+# Check local service log
+cat /tmp/customer-service.log
 ```
+
+### Docker Build Fails (better-sqlite3 native module)
+The `node:20-slim` base image requires build tools for native modules. The Dockerfiles install `python3 make g++` automatically. If you see build errors, ensure you're not overriding the base image.
 
 ## 6. Resources
 
 - Full documentation: **[README.md](../README.md)**
-- API examples: **API_EXAMPLES.md**
-- Demo script: **DEMO_SCRIPT.md**
-- Copilot prompts: **COPILOT_PROMPTS.md**
-
-## Need Help?
-
-- Check application logs in the console
-- Review the error messages carefully
-- Consult the documentation files
-- Open an issue if you find a bug
+- API examples: **[API_EXAMPLES.md](API_EXAMPLES.md)**
+- Architecture: **[ARCHITECTURE.md](ARCHITECTURE.md)**
+- Load testing: **[LOAD_TESTING_PLAN.md](LOAD_TESTING_PLAN.md)**
 
 ---
 
 **You're ready to start!** 🚀
-
-Recommended: Start with the demo script (DEMO_SCRIPT.md) for a guided experience.

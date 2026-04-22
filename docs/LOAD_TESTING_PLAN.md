@@ -1,7 +1,7 @@
 # Load Testing Plan: E-Commerce Microservices
 
-> **Project:** `com.fisglobal.demo` · Spring Boot 3.5.0 · Spring Cloud 2024.0.1 · Java 25 + Virtual Threads  
-> **Last updated:** 2025
+> **Project:** E-Commerce Microservices · TypeScript/Node.js · Express + better-sqlite3  
+> **Load tool:** k6 (TypeScript, bundled with esbuild)
 
 ---
 
@@ -43,11 +43,11 @@ Synthetic load testing answers questions that unit and integration tests cannot:
 
 ```
 Client → API Gateway :8080
-           ├── /api/customers  → customer-service :8081 → H2
-           ├── /api/products   → inventory-service :8082 → H2
-           └── /api/orders     → order-service :8083 → H2
-                                    ├── Feign → customer-service :8081
-                                    └── Feign → inventory-service :8082
+           ├── /api/customers  → customer-service :8081 → SQLite
+           ├── /api/products   → inventory-service :8082 → SQLite
+           └── /api/orders     → order-service :8083 → SQLite
+                                    ├── axios → customer-service :8081
+                                    └── axios → inventory-service :8082
 ```
 
 Order creation is the **highest-value test target**: it exercises the gateway, the order service, two Feign client calls, and three separate H2 databases in a single request.

@@ -41,7 +41,7 @@ app.use(session({
 app.use('/auth', oauthRouter);
 
 app.get('/login', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  res.sendFile(path.join(__dirname, '..', 'public', 'login.html'));
 });
 
 app.get('/health', (_req, res) => res.json({ status: 'UP' }));
@@ -653,7 +653,7 @@ app.post('/api/incidents/seed', async (req, res) => {
 registerCopilotAgent(app, { incidents, prometheusUrl: PROMETHEUS_URL });
 
 // Serve static UI
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---------------------------------------------------------------------------
 // Start

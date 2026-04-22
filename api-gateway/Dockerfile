@@ -1,20 +1,15 @@
-FROM maven:3.9-eclipse-temurin-25 AS build
-WORKDIR /workspace
-
-COPY pom.xml .
-COPY eureka-server/pom.xml eureka-server/
-COPY api-gateway/pom.xml api-gateway/
-COPY customer-service/pom.xml customer-service/
-COPY inventory-service/pom.xml inventory-service/
-COPY order-service/pom.xml order-service/
-
-RUN mvn dependency:go-offline -pl api-gateway -am -q
-
-COPY api-gateway/src api-gateway/src
-
-RUN mvn package -pl api-gateway -am -DskipTests
-
-FROM eclipse-temurin:25-jre-alpine
+FROM node:20-alpine AS builder
 WORKDIR /app
-COPY --from=build /workspace/api-gateway/target/api-gateway-*.jar app.jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+EXPOSE 8080
+CMD ["node", "dist/index.js"]

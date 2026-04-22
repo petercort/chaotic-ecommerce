@@ -21,7 +21,7 @@ TARGET_SERVICE="order-service"
 TARGET_PORT=8083
 TARGET_IMAGE="copilot-spring-boot-demo-order-service:latest"
 HEAP_CONTAINER="${TARGET_SERVICE}-heap-test"
-NETWORK="copilot-spring-boot-demo_ecommerce-net"
+NETWORK="copilot-typescript-demo_ecommerce-net"
 HEAP_SIZE="-Xmx32m"
 LOG="$RESULTS_DIR/s7-heap-exhaustion.log"
 

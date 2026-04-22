@@ -131,6 +131,11 @@ for scenario_path in "${SCENARIOS[@]}"; do
         ANY_FAILED=true
         echo -e "\n${RED}${BOLD}✘  ${scenario_name} FAILED${RESET} (exit ${exit_code}, ${scenario_dur}s) — see ${log_file}"
     fi
+
+    # Allow services 60 s to fully recover (re-register with Eureka, warm up)
+    # before the next scenario's steady-state pre-check runs.
+    echo -e "${CYAN}[inter-scenario] Waiting 60s for services to recover before next scenario...${RESET}"
+    sleep 60
 done
 
 # ── Summary is printed by the trap; set exit code ─────────────────────────────

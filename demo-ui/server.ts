@@ -24,7 +24,7 @@ app.use('/api', createProxyMiddleware({
   },
 }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.listen(PORT, () => {
   console.log(`Demo UI running at http://localhost:${PORT}`);

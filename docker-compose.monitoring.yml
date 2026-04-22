@@ -72,7 +72,7 @@ services:
 
 networks:
   ecommerce-net:
-    name: copilot-spring-boot-demo_ecommerce-net
+    name: copilot-typescript-demo_ecommerce-net
     external: true
 
 volumes:

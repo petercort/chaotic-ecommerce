@@ -1,0 +1,8 @@
+// Test mock — prevents the real Eureka client from starting during tests.
+export function startEurekaClient(_appName: string, _port: number): void {
+  // no-op
+}
+
+export function createEurekaClient(_appName: string, _port: number): unknown {
+  return { start: (cb?: (e?: Error) => void) => cb && cb(), stop: (cb?: () => void) => cb && cb() };
+}

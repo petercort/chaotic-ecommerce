@@ -73,7 +73,6 @@ services:
 networks:
   ecommerce-net:
     name: copilot-typescript-demo_ecommerce-net
-    external: true
 
 volumes:
   grafana-data:

@@ -122,4 +122,5 @@ services:
 
 networks:
   ecommerce-net:
+    name: copilot-typescript-demo_ecommerce-net
     driver: bridge

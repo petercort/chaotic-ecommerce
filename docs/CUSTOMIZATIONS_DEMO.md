@@ -1,6 +1,6 @@
 # Demo: The Power of Copilot Customizations
 
-A 4-stage live demo showing how each layer of customization changes the *quality* of Copilot's output for the same task.
+A 3-stage live demo showing how each layer of customization changes the *quality* of Copilot's output for the same task.
 
 The task throughout: **"Add a notifications microservice to this monorepo."**
 

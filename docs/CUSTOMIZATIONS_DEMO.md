@@ -82,23 +82,7 @@ Reset before Stage 3.
 
 ---
 
-## Stage 3 — Run the Evaluations extension
-
-**Goal:** show that customizations themselves can be linted/scored.
-
-1. Open [.github/agents/microservice-scaffolder.agent.md](.github/agents/microservice-scaffolder.agent.md).
-2. Command palette → **Chat Customizations: Evaluate Active File** (or click the diagnostic gutter).
-3. Repeat for [.github/copilot-instructions.md](.github/copilot-instructions.md) and the prompt files in [.github/prompts/](.github/prompts/).
-4. Talk through the diagnostics: missing description keywords, applyTo patterns, ambiguous tool lists, etc.
-5. Optional: invoke the **`fix-customization-evaluation-diagnostics`** skill on the active file to auto-apply the suggestions.
-
-**Talking points:**
-- Customizations are code — they need review and CI too.
-- The eval extension catches the silent-failure traps (bad YAML, weak descriptions, over-broad `applyTo`).
-
----
-
-## Stage 4 — Add skills with bundled assets
+## Stage 3 — Add skills with bundled assets
 
 **Goal:** show how skills package *deterministic templates*, not just guidance.
 

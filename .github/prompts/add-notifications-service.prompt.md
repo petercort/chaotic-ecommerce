@@ -1,5 +1,5 @@
 ---
-name: add-notifications-service
+name: add-service
 description: Scaffold a brand-new notifications microservice that other services can call when an incident is detected.
 ---
 

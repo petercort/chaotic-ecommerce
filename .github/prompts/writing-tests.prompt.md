@@ -1,16 +1,13 @@
----
+--- 
 name: test-conventions
-description: 'Use when adding or reviewing tests in this monorepo. Covers unit tests (Jest + supertest), E2E tests (Playwright), and chaos scenarios. Bundles a Jest config, supertest example, Eureka mock, E2E spec template, and chaos scenario template. Triggers: "add tests", "write unit tests", "test this service", "jest setup", "supertest", "e2e tests", "playwright", "chaos test", "chaos scenario".'
----
-
+description: 'Use when adding tests for any service, adding E2E coverage, adding a chaos scenario, or asking "how should I test this?" in this monorepo. Covers unit tests (Jest + supertest), E2E tests (Playwright), and chaos scenarios (bash). Bundles a Jest config, supertest example, Eureka mock, E2E spec template, and chaos scenario template.'
+--- 
 # Test Conventions Skill
 
 This skill enforces the project test conventions across three tiers: **unit/integration** (Jest + supertest), **E2E** (Playwright), and **chaos** (bash scenarios).
 
 ## When to use
 The user asks to add tests for any service, add E2E coverage, add a chaos scenario, or asks "how should I test this?"
-
----
 
 ## Tier 1 — Unit / Integration Tests (Jest + supertest)
 
@@ -33,7 +30,7 @@ The user asks to add tests for any service, add E2E coverage, add a chaos scenar
 
 ### What good looks like
 - Each route file has a matching `<route>.test.ts` covering: happy path (correct status + response shape), 1 validation error (400), 1 not-found (404 where applicable).
-- Always add a unit test for cross-field zod `.superRefine()` rules (e.g., `channel='email'` with non-email `to` → 400). See notifications-service for canonical example.
+- Cross-field zod `.superRefine()` rules are exercised: e.g. `channel='email'` with non-email `to` → 400.
 - No test imports `eureka-js-client` directly.
 - Test run completes in under 5 seconds per service.
 

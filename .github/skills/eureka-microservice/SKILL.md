@@ -25,6 +25,7 @@ The user asks to add a new TypeScript microservice (e.g. `notifications-service`
    - `{{SERVICE_PORT}}` → chosen port
    - `{{SERVICE_ENV_NAME}}` → SHOUTY_SNAKE (e.g. `NOTIFICATIONS_SERVICE`)
 
+
 4. **Copy verbatim** from `customer-service/src/`:
    - `eureka.ts`
    - `eureka-client.d.ts`
@@ -32,17 +33,25 @@ The user asks to add a new TypeScript microservice (e.g. `notifications-service`
 
 5. **Create `tsconfig.json`** by copying `customer-service/tsconfig.json` unchanged.
 
-6. **Append the compose block** from `assets/compose-block.yml.template` to `docker-compose.yml`.
+6. **Implement request validation**:
+   - Use `zod` schemas for all request bodies.
+   - Always use `.min(1).max(N)` on user-supplied strings.
+   - Use `.superRefine()` for cross-field validation (e.g., require a valid email in `to` if `channel === 'email'`). See notifications-service for canonical example.
+   - Always export a `resetStore()` function for in-memory stores so tests can reset state between runs.
 
-7. **Add a proxy route** in `api-gateway/src/index.ts` so the new endpoints are reachable from the public API. Add the `NOTIFICATIONS_SERVICE_URL`-style constant, a new `buildBreaker` call, and an `app.all('/api/<name>*', ...)` line.
+7. **Append the compose block** from `assets/compose-block.yml.template` to `docker-compose.yml`.
 
-8. **Add E2E tests** in `e2e/tests/<service-name>.spec.ts` covering:
+8. **Add a proxy route** in `api-gateway/src/index.ts` so the new endpoints are reachable from the public API. Add the `NOTIFICATIONS_SERVICE_URL`-style constant, a new `buildBreaker` call, and an `app.all('/api/<name>*', ...)` line.
+
+9. **Add E2E tests** in `e2e/tests/<service-name>.spec.ts` covering:
    - Successful POST → 201 with `id` and `status` in response body.
-   - Validation failure → 400 (test at least one invalid cross-field case, e.g. `channel='webhook'` with a non-URL `to`).
+   - Validation failure → 400 (test at least one invalid cross-field case, e.g. `channel='webhook'` with a non-URL `to`, or `channel='email'` with invalid email).
    - Missing required fields → 400.
    - GET listing → 200, response is an array.
 
-9. **Validate** by running `npm install && npx tsc --noEmit` inside the new service folder, then `npx tsc --noEmit` in `api-gateway/` to confirm the proxy additions compile cleanly.
+10. **Add a unit test** for cross-field zod validation (e.g., invalid email for `channel: 'email'`).
+
+11. **Validate** by running `npm install && npx tsc --noEmit` inside the new service folder, then `npx tsc --noEmit` in `api-gateway/` to confirm the proxy additions compile cleanly.
 
 ## Conventions to enforce
 - Validate every request body with `zod`. Always set `.min(1).max(N)` on every user-supplied string — no unbounded strings.
@@ -53,5 +62,5 @@ The user asks to add a new TypeScript microservice (e.g. `notifications-service`
 - Use explicit `.js` extensions on all local imports in `src/` (e.g. `from './routes.js'`) — required for NodeNext module resolution.
 - Use `console.warn` / `console.error` for error paths in route handlers — never `console.log` for failures. Log validation rejections at `warn` level (without the raw body).
 - Export in-memory store state with a `resetStore()` function so tests can reset between runs.
-- Use zod `.superRefine()` for cross-field validation (e.g. email format when `channel === 'email'`, URL format when `channel === 'webhook'`).
+- Use zod `.superRefine()` for cross-field validation (e.g. email format when `channel === 'email'`, URL format when `channel === 'webhook'`). Always add a unit test for this rule. See notifications-service for canonical example.
 - Cap unbounded `GET` list endpoints: return at most the last N entries (e.g. `store.slice(-1000)`) to prevent memory exhaustion on large in-memory stores.

@@ -10,6 +10,7 @@ const PORT = parseInt(process.env.PORT ?? '8080', 10);
 const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL ?? 'http://customer-service:8081';
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL ?? 'http://inventory-service:8082';
 const ORDER_SERVICE_URL = process.env.ORDER_SERVICE_URL ?? 'http://order-service:8083';
+const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL ?? 'http://notifications-service:8084';
 
 app.use(
   cors({
@@ -62,6 +63,7 @@ function buildBreaker(serviceName: string) {
 const customerBreaker = buildBreaker('customer-service');
 const inventoryBreaker = buildBreaker('inventory-service');
 const orderBreaker = buildBreaker('order-service');
+const notificationsBreaker = buildBreaker('notifications-service');
 
 function buildProxyHandler(breaker: CircuitBreaker, baseUrl: string, serviceName: string) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -109,11 +111,13 @@ app.get('/actuator/health', (_req: Request, res: Response) => {
 app.all('/api/customers*', buildProxyHandler(customerBreaker, CUSTOMER_SERVICE_URL, 'customer-service'));
 app.all('/api/products*', buildProxyHandler(inventoryBreaker, INVENTORY_SERVICE_URL, 'inventory-service'));
 app.all('/api/orders*', buildProxyHandler(orderBreaker, ORDER_SERVICE_URL, 'order-service'));
+app.all('/api/notifications*', buildProxyHandler(notificationsBreaker, NOTIFICATIONS_SERVICE_URL, 'notifications-service'));
 
 app.listen(PORT, () => {
   console.log(`api-gateway listening on port ${PORT}`);
   console.log(`  /api/customers/** → ${CUSTOMER_SERVICE_URL}`);
   console.log(`  /api/products/**  → ${INVENTORY_SERVICE_URL}`);
   console.log(`  /api/orders/**    → ${ORDER_SERVICE_URL}`);
+  console.log(`  /api/notifications/** → ${NOTIFICATIONS_SERVICE_URL}`);
   startEurekaClient('api-gateway', PORT);
 });

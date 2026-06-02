@@ -6,7 +6,7 @@ description: Generate unit tests for all services.
 Add deterministic Jest + supertest service-level tests for customer-service, inventory-service, order-service, notifications-service, and demo-ui by first making each service test-import safe (no auto-listen on import), then adding package-local test harness config and high-value route/proxy behavior cases.
 
 **Steps**
-Baseline test harness alignment
+Phase 1: Baseline test harness alignment
 1. If a script or devDependency already exists with a different value, leave it unchanged and do not overwrite; only add entries that are absent.' *parallel across all packages*
 2. Add Jest toolchain devDependencies where missing (jest, ts-jest, supertest, @types/jest, @types/supertest). *parallel across packages except order-service where deps already exist*
 3. Add package-local Jest config files in customer-service, inventory-service, demo-ui, and confirm existing configs in order-service and notifications-service remain consistent. *parallel with step 2*

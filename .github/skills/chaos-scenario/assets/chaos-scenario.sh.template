@@ -1,0 +1,74 @@
+#!/bin/bash
+# S{{SCENARIO_NUMBER}}: {{SERVICE_NAME}} — {{HYPOTHESIS}}
+set -euo pipefail
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/docker-compose.yml"
+RESULTS_DIR="$(cd "$(dirname "$0")/.." && pwd)/results"
+mkdir -p "$RESULTS_DIR"
+source "$SCRIPTS_DIR/assert.sh"
+
+LOG_FILE="$RESULTS_DIR/s{{SCENARIO_NUMBER}}-requests.csv"
+echo "seq,http_code,elapsed_ms,result" > "$LOG_FILE"
+
+cleanup() {
+    echo ""
+    echo "[cleanup] Restarting {{SERVICE_NAME}}..."
+    docker compose -f "$COMPOSE_FILE" start {{SERVICE_NAME}} 2>/dev/null && \
+        echo "[cleanup] {{SERVICE_NAME}} restarted" || \
+        echo "[cleanup] Could not restart — run: docker compose start {{SERVICE_NAME}}"
+}
+trap cleanup EXIT
+
+echo "=== S{{SCENARIO_NUMBER}}: {{SERVICE_NAME}} Chaos Experiment ==="
+echo "Hypothesis: {{HYPOTHESIS}}"
+echo ""
+
+echo "[1/5] Verify steady state..."
+bash "$SCRIPTS_DIR/verify-steady-state.sh"
+
+echo ""
+echo "[2/5] Injecting fault — stopping {{SERVICE_NAME}}..."
+docker compose -f "$COMPOSE_FILE" stop {{SERVICE_NAME}}
+echo "{{SERVICE_NAME}} stopped. Waiting 3s for downstream effects..."
+sleep 3
+
+echo ""
+echo "[3/5] Firing 30 requests to observe failure behaviour..."
+SEQ=0
+for i in $(seq 1 30); do
+    SEQ=$((SEQ + 1))
+    ts_start=$(date +%s%3N)
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:8080/api/{{ROUTE}}" \
+        --max-time 10 2>/dev/null || echo "000")
+    ts_end=$(date +%s%3N)
+    elapsed=$(( ts_end - ts_start ))
+    RESULT="$( [ "$CODE" = "200" ] && echo "ok" || echo "fail" )"
+    echo "$SEQ,$CODE,$elapsed,$RESULT" >> "$LOG_FILE"
+done
+
+echo ""
+echo "[4/5] Restoring {{SERVICE_NAME}}..."
+docker compose -f "$COMPOSE_FILE" start {{SERVICE_NAME}}
+echo "Waiting 15s for service to become healthy..."
+sleep 15
+
+echo ""
+echo "[5/5] Asserting results..."
+TOTAL=$(grep -c "^[0-9]" "$LOG_FILE" || echo 0)
+FAIL=$(grep -c ",fail$" "$LOG_FILE" || echo 0)
+OK=$(grep -c ",ok$" "$LOG_FILE" || echo 0)
+
+echo "  Total requests : $TOTAL"
+echo "  OK             : $OK"
+echo "  Failed         : $FAIL"
+
+# Verify steady state is restored after recovery
+bash "$SCRIPTS_DIR/verify-steady-state.sh"
+
+# Assert: at least 80% of requests should have failed fast (expected degradation)
+assert_ge "$FAIL" 20 "Expected ≥20 failed requests while {{SERVICE_NAME}} was down"
+
+echo ""
+echo "=== S{{SCENARIO_NUMBER}} PASSED ==="
+exit 0

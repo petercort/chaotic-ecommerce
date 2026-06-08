@@ -82,7 +82,7 @@ k6 run --out json=results/baseline.json dist/baseline.js
 
 ## 3. Chaos Scenarios (`/scenarios/`)
 
-**8 bash-driven chaos tests.** Each scenario: verifies steady state → injects failure → probes recovery at t+15s, t+30s, t+60s → cleans up → logs to `results/chaos-<scenario>.log`.
+**7 bash-driven chaos tests.** Each scenario: verifies steady state → injects failure → probes recovery at t+15s, t+30s, t+60s → cleans up → logs to `results/chaos-<scenario>.log`.
 
 | Scenario | What It Tests |
 |---|---|
@@ -92,12 +92,11 @@ k6 run --out json=results/baseline.json dist/baseline.js
 | `s4-gateway-overload.sh` | API gateway backpressure (300 concurrent) |
 | `s5-cascade-failure.sh` | Blast radius containment |
 | `s6-network-partition.sh` | Network isolation via iptables |
-| `s7-jvm-heap-exhaustion.sh` | Memory exhaustion |
 | `s8-network-packet-drop.sh` | 60% packet loss via tc/pumba |
 
 **Run commands:**
 ```bash
-bash scenarios/run-all-chaos.sh                 # run all 8 sequentially
+bash scenarios/run-all-chaos.sh                 # run all 7 sequentially
 bash scenarios/s1-eureka-kill.sh                # run individual
 bash scripts/verify-steady-state.sh             # pre/post health check
 bash scripts/watch-chaos.sh                     # monitor execution

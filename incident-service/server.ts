@@ -127,7 +127,6 @@ const CHAOS_SCENARIOS: Record<string, ChaosScenario> = {
   's4-gateway-overload':      { script: 'scenarios/s4-gateway-overload.sh',      label: 'S4: Gateway Overload',       description: '300 concurrent requests across all gateway endpoints' },
   's5-cascade-failure':       { script: 'scenarios/s5-cascade-failure.sh',       label: 'S5: Cascade Failure',        description: 'Kill inventory and verify blast radius containment' },
   's6-network-partition':     { script: 'scenarios/s6-network-partition.sh',     label: 'S6: Network Partition',      description: 'Toxiproxy 10s latency injection simulating network partition' },
-  's7-jvm-heap-exhaustion':   { script: 'scenarios/s7-jvm-heap-exhaustion.sh',   label: 'S7: JVM Heap Exhaustion',    description: 'Run order-service with -Xmx32m and fire 100 requests' },
   's8-network-packet-drop':   { script: 'scenarios/s8-network-packet-drop.sh',   label: 'S8: Network Packet Drop',    description: '60% packet loss on customer-service via pumba' },
 };
 

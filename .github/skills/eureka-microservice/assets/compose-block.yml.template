@@ -1,0 +1,19 @@
+  {{SERVICE_NAME}}:
+    build:
+      context: ./{{SERVICE_NAME}}
+    container_name: {{SERVICE_NAME}}
+    ports:
+      - "${{{SERVICE_ENV_NAME}}_PORT:-{{SERVICE_PORT}}}:{{SERVICE_PORT}}"
+    environment:
+      EUREKA_HOST: eureka-server
+    networks:
+      - ecommerce-net
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:{{SERVICE_PORT}}/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s

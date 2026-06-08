@@ -1,0 +1,110 @@
+#!/bin/bash
+# S{{N}}: {{SCENARIO_TITLE}} — {{ONE_LINE_DESCRIPTION}}
+#
+# Hypothesis: {{OBSERVABLE_BEHAVIOUR_UNDER_FAULT}}
+# Steady state: all 5 services healthy, /api/customers /api/products /api/orders → 200
+# Blast radius: {{WHICH_SERVICES_ARE_AFFECTED}}
+# Expected outcome: {{WHAT_SHOULD_HAPPEN_DURING_FAULT}}
+set -euo pipefail
+
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+RESULTS_DIR="$(cd "$(dirname "$0")/.." && pwd)/results"
+COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/docker-compose.yml"
+mkdir -p "$RESULTS_DIR"
+source "$SCRIPTS_DIR/assert.sh"
+
+LOG_FILE="$RESULTS_DIR/s{{N}}-requests.csv"
+echo "seq,http_code,elapsed_ms,result" > "$LOG_FILE"
+
+# ── Cleanup: always restore the stack ─────────────────────────────────────────
+cleanup() {
+    echo ""
+    echo "[cleanup] Restoring {{TARGET_SERVICE}}..."
+    # TODO: restore command — e.g.:
+    #   docker compose -f "$COMPOSE_FILE" start {{TARGET_SERVICE}}
+    #   curl -s -X POST http://localhost:{{PORT}}/actuator/chaosmonkey/disable
+    echo "[cleanup] Done"
+}
+trap cleanup EXIT
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+PROBE_URLS=(
+    "http://localhost:8080/api/customers"
+    "http://localhost:8080/api/products"
+    "http://localhost:8080/api/orders"
+)
+
+probe_burst() {
+    local label="$1"
+    local n="${2:-10}"
+    local pass=0 fail=0
+    for url in "${PROBE_URLS[@]}"; do
+        for _ in $(seq 1 "$n"); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 5 2>/dev/null || echo "000")
+            if [ "$CODE" = "200" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+        done
+    done
+    echo "  [$label] pass=$pass fail=$fail"
+}
+
+# ── Step 1: Verify steady state ───────────────────────────────────────────────
+echo "=== S{{N}}: {{SCENARIO_TITLE}} ==="
+echo "Hypothesis: {{OBSERVABLE_BEHAVIOUR_UNDER_FAULT}}"
+echo ""
+echo "[1/4] Verifying steady state..."
+bash "$SCRIPTS_DIR/verify-steady-state.sh"
+
+# ── Step 2: Inject fault ──────────────────────────────────────────────────────
+echo ""
+echo "[2/4] Injecting fault: {{FAULT_DESCRIPTION}}..."
+# TODO: insert fault injection command here
+# Example — stop a container:
+#   docker compose -f "$COMPOSE_FILE" stop {{TARGET_SERVICE}}
+# Example — Chaos Monkey latency:
+#   curl -s -X POST http://localhost:{{PORT}}/actuator/chaosmonkey/assaults \
+#     -H "Content-Type: application/json" \
+#     -d '{"latencyActive":true,"latencyRangeStart":5000,"latencyRangeEnd":8000,"level":1}'
+sleep 2
+
+# ── Step 3: Send traffic and record ──────────────────────────────────────────
+echo ""
+echo "[3/4] Sending {{REQUEST_COUNT}} requests under fault..."
+PASS=0; FAIL=0
+
+for i in $(seq 1 {{REQUEST_COUNT}}); do
+    (
+        ts_start=$(date +%s%3N 2>/dev/null || echo 0)
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "{{PROBE_URL}}" --max-time 10 2>/dev/null || echo "000")
+        ts_end=$(date +%s%3N 2>/dev/null || echo 0)
+        elapsed=$(( ts_end - ts_start ))
+        result="ok"
+        # TODO: adjust pass condition
+        [ "$CODE" = "200" ] && result="ok" || result="degraded"
+        echo "$i,$CODE,$elapsed,$result" >> "$LOG_FILE"
+        printf "  Req %2d: HTTP %s in %dms\n" "$i" "$CODE" "$elapsed"
+    ) &
+done
+wait
+
+OK_COUNT=$(grep -c ",ok$" "$LOG_FILE" 2>/dev/null || echo 0)
+DEGRADED_COUNT=$(grep -c ",degraded$" "$LOG_FILE" 2>/dev/null || echo 0)
+echo ""
+echo "  OK: $OK_COUNT/{{REQUEST_COUNT}}   Degraded: $DEGRADED_COUNT/{{REQUEST_COUNT}}"
+
+# ── Step 4: Verify recovery (cleanup trap fires first, then this runs) ────────
+echo ""
+echo "[4/4] Verifying recovery after fault removal..."
+sleep 5
+bash "$SCRIPTS_DIR/verify-steady-state.sh"
+
+# ── Pass / Fail ───────────────────────────────────────────────────────────────
+echo ""
+# TODO: adjust pass threshold
+if [ "$OK_COUNT" -ge $(( {{REQUEST_COUNT}} * 8 / 10 )) ]; then
+    echo "S{{N}} PASSED — $OK_COUNT/{{REQUEST_COUNT}} requests succeeded under fault"
+    exit 0
+else
+    echo "S{{N}} FAILED — only $OK_COUNT/{{REQUEST_COUNT}} succeeded; check logs at $LOG_FILE"
+    exit 1
+fi

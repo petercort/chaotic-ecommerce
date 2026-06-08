@@ -61,7 +61,7 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       SESSION_SECRET: ${SESSION_SECRET:-incident-cmd-dev-secret}
-      GITHUB_REPO: ${GITHUB_REPO:-petercort/copilot-spring-boot-demo}
+      GITHUB_REPO: ${GITHUB_REPO:-petercort/chaotic-ecommerce}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace:ro
@@ -73,7 +73,6 @@ services:
 networks:
   ecommerce-net:
     name: copilot-typescript-demo_ecommerce-net
-    external: true
 
 volumes:
   grafana-data:

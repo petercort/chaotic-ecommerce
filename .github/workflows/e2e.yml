@@ -15,11 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-node@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+          node-version: '20'
 
       - name: Build microservices
         run: ./build.sh

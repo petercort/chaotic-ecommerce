@@ -102,7 +102,7 @@ This document explains the architecture of the e-commerce application, both in i
     │ Repository  │ │ Repository  │ │ Repository  │
     ├─────────────┤ ├─────────────┤ ├─────────────┤
     │ Customer DB │ │ Product DB  │ │  Order DB   │
-    │  (H2)       │ │  (H2)       │ │  (H2)       │
+    │ (Postgres)  │ │  (SQLite)   │ │  (SQLite)   │
     └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
@@ -145,6 +145,7 @@ Each service owns its own data:
 Customer Service      Inventory Service      Order Service
 ┌──────────────┐     ┌──────────────┐      ┌──────────────┐
 │ Customer DB  │     │ Product DB   │      │  Order DB    │
+│ (PostgreSQL) │     │  (SQLite)    │      │  (SQLite)    │
 ├──────────────┤     ├──────────────┤      ├──────────────┤
 │ customers    │     │ products     │      │ orders       │
 │              │     │              │      │ order_items  │
@@ -153,6 +154,10 @@ Customer Service      Inventory Service      Order Service
 Note: No foreign keys across services!
 Order.customerId is just an ID reference,
 not a database foreign key.
+
+customer-service persists to a PostgreSQL container with a named
+volume, so its data survives restarts. inventory-service and
+order-service still use in-memory SQLite (reset on restart).
 ```
 
 ---
@@ -281,55 +286,15 @@ OrderItem
 
 ## Key Design Patterns
 
-### 1. Repository Pattern
-Each domain uses Spring Data JPA repositories for data access:
-```
-CustomerRepository extends JpaRepository<Customer, Long>
-ProductRepository extends JpaRepository<Product, Long>
-OrderRepository extends JpaRepository<Order, Long>
-```
-
-### 2. Service Layer Pattern
-Business logic is encapsulated in service classes:
-```
-@Service
-@Transactional
-class CustomerService {
-    private final CustomerRepository repository;
-    // business methods
-}
-```
-
-### 3. REST Controller Pattern
-Controllers expose REST APIs:
-```
-@RestController
-@RequestMapping("/api/customers")
-class CustomerController {
-    private final CustomerService service;
-    // endpoint methods
-}
-```
-
-### 4. DTO Pattern (for microservices)
+### DTO Pattern
 Separate request/response objects from entities:
 ```
 CreateOrderRequest → OrderService → Order entity
 Order entity → OrderResponse → Client
 ```
 
-### 5. Client Pattern (for microservices)
-Services communicate via REST clients:
-```
-@Service
-class CustomerClient {
-    private final RestTemplate restTemplate;
-    
-    public Optional<Customer> getCustomerById(Long id) {
-        // HTTP GET to customer-service
-    }
-}
-```
+### Client Pattern (for microservices)
+Services communicate via REST (axios) clients to other services' HTTP APIs.
 
 ---
 
@@ -384,7 +349,7 @@ If step 8 fails: Need to restore stock (compensation logic)
 
 **Solutions**:
 - Retry logic with exponential backoff
-- Circuit breakers (Resilience4j)
+- Circuit breakers (opossum)
 - Timeouts and fallbacks
 - Idempotency (safe to retry)
 
@@ -476,7 +441,8 @@ Scale: Replicate individual services as needed
 ### Current (Microservices — TypeScript/Node.js)
 - **Language**: TypeScript 5, Node.js 20
 - **Framework**: Express.js
-- **Database**: better-sqlite3 (in-memory per service)
+- **Database**: PostgreSQL (customer-service, durable via named volume); better-sqlite3 in-memory (inventory-service, order-service)
+- **DB driver**: pg (node-postgres) with connection pool + retry/backoff
 - **Validation**: zod
 - **HTTP client**: axios (order-service → customer/inventory)
 - **Circuit breaker**: opossum
@@ -486,19 +452,23 @@ Scale: Replicate individual services as needed
 ### Key Design Patterns (TypeScript)
 
 #### 1. Route Handler Pattern
-Each service has route handlers:
+Each service has route handlers. customer-service uses async `pg` pool queries:
 ```typescript
-router.get('/api/customers', (req, res) => {
-  const customers = db.prepare('SELECT * FROM customers').all();
-  res.json(customers.map(rowToCustomer));
+router.get('/api/customers', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM customers ORDER BY id');
+  res.json(rows.map(rowToCustomer));
 });
 ```
 
-#### 2. SQLite In-Memory Database
-Each service manages its own in-memory database:
+#### 2. Database Layer
+customer-service connects to PostgreSQL with retry/backoff and runs an
+idempotent migration on startup (inventory-service and order-service still
+use in-memory SQLite):
 ```typescript
-const db = new Database(':memory:');
-db.exec(`CREATE TABLE customers (...)`);
+const pool = new Pool({ host: process.env.DB_HOST, /* ... */ });
+await connectWithRetry();
+await runMigrations();   // CREATE TABLE IF NOT EXISTS customers (...)
+await seedDefaultCustomers();
 ```
 
 #### 3. Saga Orchestration (order-service)

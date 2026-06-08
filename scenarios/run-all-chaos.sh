@@ -14,7 +14,7 @@ CYAN=$'\033[0;36m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
 
-# ── Scenario list (s1 → s8) ───────────────────────────────────────────────────
+# ── Scenario list (s1 → s6, s8) ───────────────────────────────────────────────
 SCENARIOS=(
     "$SCRIPT_DIR/s1-eureka-kill.sh"
     "$SCRIPT_DIR/s2-customer-service-kill.sh"
@@ -22,7 +22,6 @@ SCENARIOS=(
     "$SCRIPT_DIR/s4-gateway-overload.sh"
     "$SCRIPT_DIR/s5-cascade-failure.sh"
     "$SCRIPT_DIR/s6-network-partition.sh"
-    "$SCRIPT_DIR/s7-jvm-heap-exhaustion.sh"
     "$SCRIPT_DIR/s8-network-packet-drop.sh"
 )
 

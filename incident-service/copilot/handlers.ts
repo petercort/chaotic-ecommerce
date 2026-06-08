@@ -372,7 +372,7 @@ export const handlers: Record<string, HandlerFn> = {
       return 'Cannot create GitHub issue: no GitHub token available. Please sign in with GitHub OAuth first.';
     }
 
-    const repo = process.env.GITHUB_REPO || 'petercort/copilot-typescript-demo';
+    const repo = process.env.GITHUB_REPO || 'petercort/chaotic-ecommerce';
     const issueLabels = Array.isArray(labels) ? labels : [];
 
     const headers = {

@@ -70,7 +70,7 @@ kill $(cat /tmp/ecommerce-pids.txt)
 Open the project in your IDE and explore:
 
 ### Key Files to Review
-1. **Customer Service**: `customer-service/src/` — Express routes, SQLite schema, seed data
+1. **Customer Service**: `customer-service/src/` — Express routes, PostgreSQL schema/migrations, seed data
 2. **Inventory Service**: `inventory-service/src/` — Product catalog + reserve/restore logic
 3. **Order Service**: `order-service/src/` — Orchestration saga with compensation
 4. **API Gateway**: `api-gateway/src/index.ts` — Axios proxying + opossum circuit breakers
@@ -78,7 +78,7 @@ Open the project in your IDE and explore:
 
 ### Architecture Observations
 - All services are independent Node.js/Express processes
-- Each service has its own SQLite in-memory database (data resets on restart)
+- `customer-service` persists to a PostgreSQL container (durable via named volume); `inventory-service` and `order-service` use SQLite in-memory databases (data resets on restart)
 - `order-service` calls `customer-service` and `inventory-service` via axios with circuit breakers
 - Service discovery is handled by Docker Compose DNS (no registry needed)
 
@@ -127,7 +127,7 @@ The `node:20-slim` base image requires build tools for native modules. The Docke
 - Full documentation: **[README.md](../README.md)**
 - API examples: **[API_EXAMPLES.md](API_EXAMPLES.md)**
 - Architecture: **[ARCHITECTURE.md](ARCHITECTURE.md)**
-- Load testing: **[LOAD_TESTING_PLAN.md](LOAD_TESTING_PLAN.md)**
+- Testing strategy: **[COMPREHENSIVE-TESTING-PLAN.md](COMPREHENSIVE-TESTING-PLAN.md)**
 
 ---
 

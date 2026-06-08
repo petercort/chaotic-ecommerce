@@ -3,9 +3,42 @@ import { startEurekaClient } from './eureka';
 import cors from 'cors';
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
+import rateLimit from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
+import { Redis } from 'ioredis';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '8080', 10);
+
+const REDIS_URL = process.env.REDIS_URL;
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10);
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10);
+
+function buildRateLimiter() {
+  if (REDIS_URL) {
+    const redis = new Redis(REDIS_URL);
+    redis.on('error', (err) => console.error('[rate-limit] Redis error:', err));
+    return rateLimit({
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: RATE_LIMIT_MAX,
+      standardHeaders: true,
+      legacyHeaders: false,
+      store: new RedisStore({
+        // ioredis call() is compatible at runtime; cast bridges the type gap
+        sendCommand: ((...args: string[]) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          redis.call(args[0], ...args.slice(1))) as any,
+      }),
+    });
+  }
+  console.warn('[rate-limit] REDIS_URL not set — using in-memory store (not suitable for multi-instance deployments)');
+  return rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    max: RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
 
 const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL ?? 'http://customer-service:8081';
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL ?? 'http://inventory-service:8082';
@@ -22,6 +55,8 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use('/api', buildRateLimiter());
 
 const breakerOptions: CircuitBreaker.Options = {
   timeout: 5000,

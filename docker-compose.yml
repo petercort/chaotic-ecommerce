@@ -125,6 +125,22 @@ services:
       retries: 5
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - ecommerce-net
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   api-gateway:
     build:
       context: ./api-gateway
@@ -137,6 +153,9 @@ services:
       ORDER_SERVICE_URL: http://order-service:8083
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:8084
       EUREKA_HOST: eureka-server
+      REDIS_URL: redis://redis:6379
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
     networks:
       - ecommerce-net
     depends_on:
@@ -148,6 +167,8 @@ services:
         condition: service_healthy
       notifications-service:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
       interval: 15s
@@ -158,7 +179,6 @@ services:
   demo-ui:
     build:
       context: ./demo-ui
-      dockerfile: Dockerfile
     container_name: demo-ui
     ports:
       - "${DEMO_UI_PORT:-8090}:8090"
@@ -177,4 +197,6 @@ networks:
 
 volumes:
   postgres-data:
+    driver: local
+  redis-data:
     driver: local

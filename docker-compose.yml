@@ -34,6 +34,20 @@ services:
       retries: 5
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   customer-service:
     build:
       context: ./customer-service
@@ -137,9 +151,21 @@ services:
       ORDER_SERVICE_URL: http://order-service:8083
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:8084
       EUREKA_HOST: eureka-server
+      REDIS_URL: redis://redis:6379
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_MESSAGE: ${RATE_LIMIT_MESSAGE:-Too many requests}
+      RATE_LIMIT_REDIS_PREFIX: ${RATE_LIMIT_REDIS_PREFIX:-api-gateway:rate-limit:}
+      RATE_LIMIT_REDIS_REQUIRED: ${RATE_LIMIT_REDIS_REQUIRED:-false}
+      RATE_LIMIT_FAIL_OPEN: ${RATE_LIMIT_FAIL_OPEN:-true}
+      RATE_LIMIT_SKIP_HEALTH: ${RATE_LIMIT_SKIP_HEALTH:-true}
+      RATE_LIMIT_TRUST_PROXY: ${RATE_LIMIT_TRUST_PROXY:-false}
     networks:
       - ecommerce-net
     depends_on:
+      redis:
+        condition: service_healthy
       customer-service:
         condition: service_healthy
       inventory-service:

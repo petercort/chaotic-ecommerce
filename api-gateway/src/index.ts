@@ -3,6 +3,9 @@ import { startEurekaClient } from './eureka';
 import cors from 'cors';
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
+import rateLimit, { type Store } from 'express-rate-limit';
+import { RedisStore, type RedisReply } from 'rate-limit-redis';
+import { createClient } from 'redis';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '8080', 10);
@@ -11,6 +14,84 @@ const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL ?? 'http://custome
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL ?? 'http://inventory-service:8082';
 const ORDER_SERVICE_URL = process.env.ORDER_SERVICE_URL ?? 'http://order-service:8083';
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL ?? 'http://notifications-service:8084';
+
+const RATE_LIMIT_ENABLED = process.env.RATE_LIMIT_ENABLED !== 'false';
+const RATE_LIMIT_WINDOW_MS = parsePositiveIntegerEnv('RATE_LIMIT_WINDOW_MS', 60_000);
+const RATE_LIMIT_MAX = parsePositiveIntegerEnv('RATE_LIMIT_MAX', 100);
+const RATE_LIMIT_MESSAGE = process.env.RATE_LIMIT_MESSAGE ?? 'Too many requests';
+const RATE_LIMIT_REDIS_PREFIX = process.env.RATE_LIMIT_REDIS_PREFIX ?? 'api-gateway:rate-limit:';
+const RATE_LIMIT_REDIS_REQUIRED = process.env.RATE_LIMIT_REDIS_REQUIRED === 'true';
+const RATE_LIMIT_FAIL_OPEN = process.env.RATE_LIMIT_FAIL_OPEN !== 'false';
+const RATE_LIMIT_SKIP_HEALTH = process.env.RATE_LIMIT_SKIP_HEALTH !== 'false';
+const RATE_LIMIT_TRUST_PROXY = process.env.RATE_LIMIT_TRUST_PROXY === 'true';
+const REDIS_URL = process.env.REDIS_URL;
+
+if (RATE_LIMIT_TRUST_PROXY) {
+  app.set('trust proxy', 1);
+}
+
+function parsePositiveIntegerEnv(name: string, defaultValue: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return defaultValue;
+  }
+
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`[rate-limit] Invalid ${name}=${raw}; using ${defaultValue}`);
+    return defaultValue;
+  }
+
+  return parsed;
+}
+
+function buildRateLimitStore(): Store | undefined {
+  if (!REDIS_URL) {
+    if (RATE_LIMIT_REDIS_REQUIRED) {
+      throw new Error('RATE_LIMIT_REDIS_REQUIRED=true but REDIS_URL is not configured');
+    }
+
+    console.warn('[rate-limit] REDIS_URL not configured; using in-memory rate limit store');
+    return undefined;
+  }
+
+  const redisClient = createClient({ url: REDIS_URL });
+
+  redisClient.on('error', (err) => {
+    console.error('[rate-limit] Redis client error:', err);
+  });
+
+  void redisClient.connect()
+    .then(() => console.log('[rate-limit] Connected to Redis rate limit store'))
+    .catch((err) => {
+      console.error('[rate-limit] Failed to connect to Redis rate limit store:', err);
+
+      if (RATE_LIMIT_REDIS_REQUIRED) {
+        process.exit(1);
+      }
+    });
+
+  return new RedisStore({
+    prefix: RATE_LIMIT_REDIS_PREFIX,
+    sendCommand: async (...args: string[]): Promise<RedisReply> => redisClient.sendCommand(args) as Promise<RedisReply>,
+  });
+}
+
+function buildRateLimiter() {
+  return rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    limit: RATE_LIMIT_MAX,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    identifier: 'api-gateway-global',
+    passOnStoreError: RATE_LIMIT_FAIL_OPEN,
+    store: buildRateLimitStore(),
+    skip: (req) => RATE_LIMIT_SKIP_HEALTH && req.path === '/actuator/health',
+    handler: (_req, res) => {
+      res.status(429).json({ error: RATE_LIMIT_MESSAGE });
+    },
+  });
+}
 
 app.use(
   cors({
@@ -22,6 +103,13 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+if (RATE_LIMIT_ENABLED) {
+  app.use(buildRateLimiter());
+  console.log(`[rate-limit] Enabled: ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS}ms`);
+} else {
+  console.warn('[rate-limit] Disabled by RATE_LIMIT_ENABLED=false');
+}
 
 const breakerOptions: CircuitBreaker.Options = {
   timeout: 5000,

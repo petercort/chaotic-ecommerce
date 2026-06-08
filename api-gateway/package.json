@@ -12,8 +12,11 @@
     "cors": "^2.8.5",
     "eureka-js-client": "^4.5.0",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
     "http-proxy-middleware": "^2.0.9",
-    "opossum": "^8.1.1"
+    "opossum": "^8.1.1",
+    "rate-limit-redis": "^5.0.0",
+    "redis": "^6.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

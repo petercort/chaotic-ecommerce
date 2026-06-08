@@ -1,21 +1,3 @@
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
-
-# Eclipse
-.classpath
-.project
-.settings/
-bin/
-
 # IntelliJ IDEA
 .idea/
 *.iws
@@ -32,7 +14,6 @@ out/
 /nbbuild/
 /dist/
 /nbdist/
-/.nb-gradle/
 
 # Node.js
 node_modules/
@@ -67,19 +48,13 @@ logs/
 *~
 *.orig
 
-# H2 Database files
-*.db
-*.mv.db
-*.trace.db
+# Generated test artifacts
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+load-tests/results/*
+!load-tests/results/.gitkeep
 
-# Spring Boot
-spring.log
-
-# Microservices helper scripts (not part of Maven build)
-build-all-services.sh
-start-all-services.sh
-stop-all-services.sh
-.service-pids
-
-
-results/
+results/*
+!results/.gitkeep

@@ -81,6 +81,8 @@ CMD ["node", "dist/index.js"]
 ```
 
 > **Why python3/make/g++?** `better-sqlite3` is a native Node.js addon that must be compiled for the target architecture. Both stages need build tools because `npm ci --omit=dev` rebuilds native modules from source.
+>
+> **Exception — `customer-service`:** it migrated to PostgreSQL via the pure-JavaScript `pg` driver, so its Dockerfile **drops** `python3 make g++` entirely. Only `inventory-service` and `order-service` still need the native build tools for `better-sqlite3`.
 
 The `api-gateway` and `demo-ui` have no native modules and use `node:20-alpine` for a smaller image.
 

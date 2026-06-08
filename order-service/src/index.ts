@@ -14,9 +14,11 @@ app.use('/api/orders', orderRouter);
 
 const PORT = Number(process.env.PORT ?? 8083);
 
-app.listen(PORT, () => {
-  console.log(`order-service listening on port ${PORT}`);
-  startEurekaClient('order-service', PORT);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`order-service listening on port ${PORT}`);
+    startEurekaClient('order-service', PORT);
+  });
+}
 
 export default app;

@@ -1,0 +1,25 @@
+{
+  "name": "chaotic-ecommerce",
+  "version": "1.0.0",
+  "description": "Chaotic e-commerce microservices monorepo (Express + TypeScript) orchestrated via Docker Compose and Eureka",
+  "private": true,
+  "workspaces": [
+    "api-gateway",
+    "customer-service",
+    "order-service",
+    "inventory-service",
+    "notifications-service",
+    "incident-service",
+    "eureka-server",
+    "demo-ui",
+    "e2e",
+    "load-tests"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:all": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:all": "npm run test --workspaces --if-present",
+    "install:all": "npm install"
+  }
+}

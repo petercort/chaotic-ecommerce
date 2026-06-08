@@ -95,7 +95,6 @@ Validation tasks:
 ### 6. Update related operational docs
 
 - Check `docs/README.md` if needed for consistency with the top-level README.
-- Update `docs/DOCKER_COMPOSE_PLAN.md` if its assumptions conflict with the chosen topology.
 - Update `docker-compose.monitoring.yml` metadata such as stale repository names.
 - Review `docs/TESTING_CAPABILITIES.md` if the service list changes.
 

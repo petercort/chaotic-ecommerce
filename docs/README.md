@@ -1,27 +1,29 @@
 # Documentation
 
-This directory contains all documentation for the E-Commerce Monolith to Microservices Demo project.
+This directory contains all documentation for the TypeScript/Node.js e-commerce microservices demo project.
 
 ## Quick Links
 
 ### Getting Started
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Build Notes](BUILD_NOTES.md)** - Build configuration, Java 17 setup, and troubleshooting
-
-### Demo Materials
-- **[Demo Script](DEMO_SCRIPT.md)** - Complete 60-minute live demonstration guide
-- **[Presenter Checklist](PRESENTER_CHECKLIST.md)** - Pre-demo preparation and checklist
-- **[Copilot Prompts](COPILOT_PROMPTS.md)** - 50+ GitHub Copilot prompts for refactoring
+- **[Build Notes](BUILD_NOTES.md)** - Build configuration and troubleshooting
 
 ### Technical Documentation
 - **[Architecture](ARCHITECTURE.md)** - System architecture and design patterns
-- **[Diagrams](DIAGRAMS.md)** - Visual architecture diagrams and service communication flows
-- **[Project Summary](PROJECT_SUMMARY.md)** - Technical overview and component details
 - **[API Examples](API_EXAMPLES.md)** - Comprehensive API testing guide with curl examples
 
-### Reference Implementation
-- **[Completed Demo Guide](COMPLETED_DEMO_GUIDE.md)** - Guide to the completed microservices implementation
-- **[Delivery Summary](DELIVERY_SUMMARY.md)** - Complete project delivery overview and statistics
+### Testing
+- **[Comprehensive Testing Plan](COMPREHENSIVE-TESTING-PLAN.md)** - E2E, load, and chaos testing strategy
+- **[Testing Capabilities](TESTING_CAPABILITIES.md)** - Summary of available test frameworks and tooling
+
+### Demo Materials
+- **[Copilot Prompts](COPILOT_PROMPTS.md)** - GitHub Copilot prompts used to build the services
+- **[Customizations Demo](CUSTOMIZATIONS_DEMO.md)** - Copilot instructions, agents, and skills walkthrough
+
+### Planning & In-Progress
+- **[Topology Alignment Task List](TOPOLOGY_ALIGNMENT_TASK_LIST.md)** - Service topology alignment notes
+- **[Postgres Migration](postgres-migration-issue.md)** - Customer-service PostgreSQL persistence story
+- **[Optimizer Demo](Optimizer-Demo/)** - CI hardening and service test task lists
 
 ## Documentation Overview
 
@@ -30,16 +32,10 @@ This directory contains all documentation for the E-Commerce Monolith to Microse
 2. Review [BUILD_NOTES.md](BUILD_NOTES.md) if you encounter build issues
 3. Test the APIs using [API_EXAMPLES.md](API_EXAMPLES.md)
 
-### For Presenters
-1. Read [PRESENTER_CHECKLIST.md](PRESENTER_CHECKLIST.md) to prepare for your demo
-2. Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md) during the presentation
-3. Keep [COPILOT_PROMPTS.md](COPILOT_PROMPTS.md) open for reference
-
 ### For Developers
 1. Understand the architecture in [ARCHITECTURE.md](ARCHITECTURE.md)
-2. Review [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) for technical details
-3. Use [COPILOT_PROMPTS.md](COPILOT_PROMPTS.md) to guide your refactoring
-4. Check [COMPLETED_DEMO_GUIDE.md](COMPLETED_DEMO_GUIDE.md) for the reference implementation
+2. Review the testing strategy in [COMPREHENSIVE-TESTING-PLAN.md](COMPREHENSIVE-TESTING-PLAN.md)
+3. Use [COPILOT_PROMPTS.md](COPILOT_PROMPTS.md) and [CUSTOMIZATIONS_DEMO.md](CUSTOMIZATIONS_DEMO.md) for Copilot-driven workflows
 
 ## Document Descriptions
 
@@ -47,15 +43,12 @@ This directory contains all documentation for the E-Commerce Monolith to Microse
 |----------|---------|----------|
 | **QUICKSTART.md** | 5-minute setup guide | Everyone |
 | **BUILD_NOTES.md** | Build configuration and troubleshooting | Developers |
-| **DEMO_SCRIPT.md** | Step-by-step 60-minute demo walkthrough | Presenters |
-| **PRESENTER_CHECKLIST.md** | Pre-demo preparation checklist | Presenters |
-| **COPILOT_PROMPTS.md** | Curated list of 50+ Copilot prompts | Developers, Presenters |
 | **ARCHITECTURE.md** | Detailed architecture documentation | Architects, Developers |
-| **DIAGRAMS.md** | Visual diagrams and communication flows | Everyone |
-| **PROJECT_SUMMARY.md** | Technical component overview | Developers |
 | **API_EXAMPLES.md** | REST API testing examples | Developers, Testers |
-| **COMPLETED_DEMO_GUIDE.md** | Reference implementation guide | Everyone |
-| **DELIVERY_SUMMARY.md** | Complete project delivery overview | Presenters, Managers |
+| **COMPREHENSIVE-TESTING-PLAN.md** | E2E, load, and chaos testing strategy | Developers, Testers |
+| **TESTING_CAPABILITIES.md** | Test framework and tooling summary | Developers |
+| **COPILOT_PROMPTS.md** | Curated list of Copilot prompts | Developers, Presenters |
+| **CUSTOMIZATIONS_DEMO.md** | Copilot customizations walkthrough | Presenters |
 
 ## Contributing to Documentation
 

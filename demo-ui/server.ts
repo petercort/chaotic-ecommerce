@@ -24,9 +24,13 @@ app.use('/api', createProxyMiddleware({
   },
 }));
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, () => {
-  console.log(`Demo UI running at http://localhost:${PORT}`);
-  console.log(`Proxying /api/* → ${API_GATEWAY_URL}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Demo UI running at http://localhost:${PORT}`);
+    console.log(`Proxying /api/* → ${API_GATEWAY_URL}`);
+  });
+}
+
+export { app };

@@ -24,6 +24,6 @@ export interface CustomerRow {
   state: string | null;
   zip_code: string | null;
   country: string | null;
-  created_at: string;
-  updated_at: string | null;
+  created_at: string | Date;
+  updated_at: string | Date | null;
 }

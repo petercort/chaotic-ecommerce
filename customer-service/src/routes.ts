@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import db, { rowToCustomer } from "./db";
+import pool, { rowToCustomer } from "./db";
 import type { CustomerRow } from "./types";
 
 const router = Router();
@@ -18,14 +18,15 @@ const customerSchema = z.object({
 });
 
 // GET /api/customers
-router.get("/", (_req: Request, res: Response) => {
-  const rows = db.prepare("SELECT * FROM customers ORDER BY id").all() as CustomerRow[];
+router.get("/", async (_req: Request, res: Response) => {
+  const { rows } = await pool.query<CustomerRow>("SELECT * FROM customers ORDER BY id");
   res.json(rows.map(rowToCustomer));
 });
 
 // GET /api/customers/email/:email — must come before /:id
-router.get("/email/:email", (req: Request, res: Response) => {
-  const row = db.prepare("SELECT * FROM customers WHERE email = ?").get(req.params.email) as CustomerRow | undefined;
+router.get("/email/:email", async (req: Request, res: Response) => {
+  const { rows } = await pool.query<CustomerRow>("SELECT * FROM customers WHERE email = $1", [req.params.email]);
+  const row = rows[0];
   if (!row) {
     res.status(404).json({ error: "Customer not found" });
     return;
@@ -34,8 +35,9 @@ router.get("/email/:email", (req: Request, res: Response) => {
 });
 
 // GET /api/customers/:id
-router.get("/:id", (req: Request, res: Response) => {
-  const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(req.params.id) as CustomerRow | undefined;
+router.get("/:id", async (req: Request, res: Response) => {
+  const { rows } = await pool.query<CustomerRow>("SELECT * FROM customers WHERE id = $1", [req.params.id]);
+  const row = rows[0];
   if (!row) {
     res.status(404).json({ error: "Customer not found" });
     return;
@@ -44,7 +46,7 @@ router.get("/:id", (req: Request, res: Response) => {
 });
 
 // POST /api/customers
-router.post("/", (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   const result = customerSchema.safeParse(req.body);
   if (!result.success) {
     res.status(400).json({ errors: result.error.errors });
@@ -52,26 +54,25 @@ router.post("/", (req: Request, res: Response) => {
   }
 
   const { firstName, lastName, email, phone, address, city, state, zipCode, country } = result.data;
-  const existing = db.prepare("SELECT id FROM customers WHERE email = ?").get(email);
-  if (existing) {
+  const existing = await pool.query("SELECT id FROM customers WHERE email = $1", [email]);
+  if (existing.rows.length > 0) {
     res.status(409).json({ error: "Email already exists" });
     return;
   }
 
-  const createdAt = new Date().toISOString();
-  const info = db.prepare(`
-    INSERT INTO customers (first_name, last_name, email, phone, address, city, state, zip_code, country, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(firstName, lastName, email, phone, address ?? null, city ?? null, state ?? null, zipCode ?? null, country ?? null, createdAt);
-
-  const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(info.lastInsertRowid) as CustomerRow;
-  res.status(201).json(rowToCustomer(row));
+  const { rows } = await pool.query<CustomerRow>(
+    `INSERT INTO customers (first_name, last_name, email, phone, address, city, state, zip_code, country)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [firstName, lastName, email, phone, address ?? null, city ?? null, state ?? null, zipCode ?? null, country ?? null]
+  );
+  res.status(201).json(rowToCustomer(rows[0]));
 });
 
 // PUT /api/customers/:id
-router.put("/:id", (req: Request, res: Response) => {
-  const existing = db.prepare("SELECT * FROM customers WHERE id = ?").get(req.params.id) as CustomerRow | undefined;
-  if (!existing) {
+router.put("/:id", async (req: Request, res: Response) => {
+  const existing = await pool.query<CustomerRow>("SELECT * FROM customers WHERE id = $1", [req.params.id]);
+  if (existing.rows.length === 0) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
@@ -85,30 +86,29 @@ router.put("/:id", (req: Request, res: Response) => {
   const { firstName, lastName, email, phone, address, city, state, zipCode, country } = result.data;
 
   // Check email conflict with another customer
-  const conflict = db.prepare("SELECT id FROM customers WHERE email = ? AND id != ?").get(email, req.params.id);
-  if (conflict) {
+  const conflict = await pool.query("SELECT id FROM customers WHERE email = $1 AND id != $2", [email, req.params.id]);
+  if (conflict.rows.length > 0) {
     res.status(409).json({ error: "Email already exists" });
     return;
   }
 
-  const updatedAt = new Date().toISOString();
-  db.prepare(`
-    UPDATE customers SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip_code=?, country=?, updated_at=?
-    WHERE id=?
-  `).run(firstName, lastName, email, phone, address ?? null, city ?? null, state ?? null, zipCode ?? null, country ?? null, updatedAt, req.params.id);
-
-  const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(req.params.id) as CustomerRow;
-  res.json(rowToCustomer(row));
+  const { rows } = await pool.query<CustomerRow>(
+    `UPDATE customers
+     SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip_code=$8, country=$9, updated_at=NOW()
+     WHERE id=$10
+     RETURNING *`,
+    [firstName, lastName, email, phone, address ?? null, city ?? null, state ?? null, zipCode ?? null, country ?? null, req.params.id]
+  );
+  res.json(rowToCustomer(rows[0]));
 });
 
 // DELETE /api/customers/:id
-router.delete("/:id", (req: Request, res: Response) => {
-  const existing = db.prepare("SELECT id FROM customers WHERE id = ?").get(req.params.id);
-  if (!existing) {
+router.delete("/:id", async (req: Request, res: Response) => {
+  const result = await pool.query("DELETE FROM customers WHERE id = $1", [req.params.id]);
+  if (result.rowCount === 0) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
-  db.prepare("DELETE FROM customers WHERE id = ?").run(req.params.id);
   res.status(204).send();
 });
 

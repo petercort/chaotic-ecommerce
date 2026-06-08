@@ -13,9 +13,11 @@ app.get('/actuator/health', (_req, res) => {
 
 app.use('/api/products', productRoutes);
 
-app.listen(PORT, () => {
-  console.log(`inventory-service running on port ${PORT}`);
-  startEurekaClient('inventory-service', PORT);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`inventory-service running on port ${PORT}`);
+    startEurekaClient('inventory-service', PORT);
+  });
+}
 
 export default app;

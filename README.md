@@ -9,7 +9,7 @@ Five services collaborate to handle customer management, product inventory, and 
 | Service | Port | Responsibility |
 |---------|------|----------------|
 | `api-gateway` | 8080 | Edge router — single client entry point, circuit breakers |
-| `customer-service` | 8081 | Customer CRUD, SQLite in-memory DB |
+| `customer-service` | 8081 | Customer CRUD, **PostgreSQL** (durable, named volume) |
 | `inventory-service` | 8082 | Product catalog + stock management, SQLite in-memory DB |
 | `order-service` | 8083 | Order lifecycle + orchestration saga, calls customer & inventory via axios |
 | `demo-ui` | 8090 | SPA frontend (Express + server-side proxy) |
@@ -21,7 +21,7 @@ All external traffic enters through the API Gateway on port **8080**. The demo U
 ```
 copilot-typescript-demo/
 ├── api-gateway/            # Edge router — port 8080 (Express + axios + opossum)
-├── customer-service/       # Customer CRUD — port 8081 (Express + SQLite)
+├── customer-service/       # Customer CRUD — port 8081 (Express + PostgreSQL)
 ├── inventory-service/      # Product catalog — port 8082 (Express + SQLite)
 ├── order-service/          # Order management — port 8083 (Express + SQLite + axios)
 │
@@ -34,8 +34,8 @@ copilot-typescript-demo/
 ├── load-tests/             # k6 TypeScript load test suite (esbuild pipeline)
 ├── scripts/                # Helper scripts (assert, monitor, restart, CLI test runner)
 │   └── playwright-cli-test.sh  # playwright-cli runner — 18 DOM assertions + 5 screenshots
-├── scenarios/              # Chaos experiment runbooks (S1–S8)
-│   └── run-all-chaos.sh    # Run all 8 scenarios in sequence
+├── scenarios/              # Chaos experiment runbooks (S1–S6, S8)
+│   └── run-all-chaos.sh    # Run all 7 scenarios in sequence
 │
 ├── docker-compose.yml              # Full stack (all 5 services + demo-ui)
 ├── docker-compose.monitoring.yml   # Prometheus + Grafana observability stack
@@ -53,10 +53,8 @@ copilot-typescript-demo/
 └── docs/                   # Architecture docs + implementation plans
     ├── ARCHITECTURE.md
     ├── QUICKSTART.md
-    ├── DOCKER_COMPOSE_PLAN.md
-    ├── PLAYWRIGHT_UI_TESTING_PLAN.md
-    ├── CHAOS_TESTING_PLAN.md
-    └── LOAD_TESTING_PLAN.md
+    ├── COMPREHENSIVE-TESTING-PLAN.md
+    └── API_EXAMPLES.md
 ```
 
 ## Prerequisites
@@ -140,11 +138,11 @@ curl -X POST http://localhost:8080/api/orders \
 
 ## Seed Data
 
-Each service seeds data on startup (SQLite in-memory — data resets on restart):
+Services seed data on startup. `customer-service` persists to PostgreSQL (data survives restarts); other services use SQLite in-memory (reset on restart):
 
 | Service | Data |
 |---------|------|
-| customer-service | John Doe, Jane Smith, Bob Johnson (IDs 1–3) |
+| customer-service | John Doe, Jane Smith, Bob Johnson (IDs 1–3) — seeded only when the table is empty |
 | inventory-service | Laptop $1299, Mouse $29, Keyboard $149, Chair $299, Desk $599, Webcam $79 (IDs 1–6) |
 | order-service | No seeded orders |
 
@@ -191,9 +189,49 @@ curl http://localhost:8080/api/customers
 # Open the demo UI
 open http://localhost:8090
 
-# Tear down (SQLite data is lost — in-memory only)
+# Tear down (customer-service data persists in the postgres-data volume)
 docker compose down
+
+# Tear down AND delete persisted PostgreSQL data
+docker compose down -v
 ```
+
+### Customer Persistence (PostgreSQL)
+
+`customer-service` stores customers in PostgreSQL so records survive service and stack restarts.
+
+**Environment variables** (defaults in `.env`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POSTGRES_USER` | `customer_app` | Database user |
+| `POSTGRES_PASSWORD` | `customer_pwd` | Database password (change for non-local use) |
+| `POSTGRES_DB` | `customers` | Database name |
+| `POSTGRES_PORT` | `5432` | Host port mapping |
+| `SEED_DATA` | `true` | Set `false` to skip seeding default customers |
+
+The service reads `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (or a single `DATABASE_URL`). The schema is created automatically on startup (idempotent migration), and the `/actuator/health` endpoint reports `DOWN` (HTTP 503) when the database is unreachable, so Compose health checks gate startup until PostgreSQL is ready.
+
+**Verify persistence:**
+
+```bash
+# Create a customer
+curl -X POST http://localhost:8081/api/customers \
+  -H 'Content-Type: application/json' \
+  -d '{"firstName":"Test","lastName":"User","email":"test.user@example.com","phone":"555-0000"}'
+
+# Restart the service, then confirm the record is still there
+docker compose restart customer-service
+curl http://localhost:8081/api/customers
+```
+
+**Troubleshooting:**
+
+- `customer-service` stuck unhealthy → check `docker compose logs postgres` and confirm `pg_isready`.
+- Connection refused on startup → the service retries with backoff; ensure the `postgres` container is healthy.
+- Reset all customer data → `docker compose down -v` removes the `postgres-data` volume.
+
+Tests run against an in-memory PostgreSQL (`pg-mem`), so `npm test` in `customer-service` needs no external database.
 
 ### How It Works
 
@@ -206,10 +244,10 @@ The `demo-ui` service proxies all `/api/*` requests server-side to `http://api-g
 The `docker-compose.yml` starts services in dependency order using health checks:
 
 ```
-customer-service (healthy) ─┐
-                             ├─→ order-service (healthy) ─┐
-inventory-service (healthy) ─┘                            ├─→ api-gateway → demo-ui
-                                                          
+postgres (healthy) ────────→ customer-service (healthy) ─┐
+                                                          ├─→ order-service (healthy) ─┐
+inventory-service (healthy) ──────────────────────┘                          ├─→ api-gateway → demo-ui
+                                                                                     
 ```
 
 Services find each other by Docker Compose container name (e.g. `http://customer-service:8081`) via environment variables injected at runtime.
@@ -230,7 +268,7 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 | **Grafana** | http://localhost:3000 | Metrics dashboards — `admin` / `admin` |
 | **Prometheus** | http://localhost:9090 | Raw metrics scraper |
 
-Grafana auto-provisions a **Chaos Testing Overview** dashboard (`Chaos Testing` folder) with panels for service health, HTTP request/error rates, JVM heap, GC pauses, and circuit-breaker state.
+Grafana auto-provisions a **Chaos Testing Overview** dashboard (`Chaos Testing` folder) with panels for service health, HTTP request/error rates, and circuit-breaker state.
 
 #### Terminal health monitor
 
@@ -264,8 +302,6 @@ INVENTORY_SERVICE_PORT=8082
 ORDER_SERVICE_PORT=8083
 DEMO_UI_PORT=8090
 ```
-
-> **See also:** [`docs/DOCKER_COMPOSE_PLAN.md`](docs/DOCKER_COMPOSE_PLAN.md)
 
 ---
 
@@ -349,13 +385,13 @@ The script opens a named browser session, navigates each tab via `eval`, asserts
 
 `.github/workflows/e2e.yml` — triggers on push/PR. Builds services, starts them, runs all Playwright tests, uploads HTML report as artifact.
 
-> **See also:** [`docs/PLAYWRIGHT_UI_TESTING_PLAN.md`](docs/PLAYWRIGHT_UI_TESTING_PLAN.md)
+> **See also:** [`docs/COMPREHENSIVE-TESTING-PLAN.md`](docs/COMPREHENSIVE-TESTING-PLAN.md)
 
 ---
 
 ## 💥 Chaos Testing
 
-Resilience experiments that validate the system's behaviour under failure conditions. Built on [Chaos Monkey for Spring Boot](https://github.com/codecentric/chaos-monkey-spring-boot) and [Toxiproxy](https://github.com/Shopify/toxiproxy).
+Resilience experiments that validate the system's behaviour under failure conditions. Built on [Toxiproxy](https://github.com/Shopify/toxiproxy) and `docker compose stop/start` for service-level fault injection.
 
 ### Prerequisites
 
@@ -373,11 +409,11 @@ bash scripts/verify-steady-state.sh
 # 2. Run a single scenario
 bash scenarios/s4-gateway-overload.sh
 
-# 3. Run all 8 scenarios in sequence
+# 3. Run all 7 scenarios in sequence
 bash scenarios/run-all-chaos.sh
 ```
 
-### All Eight Scenarios
+### All Seven Scenarios
 
 | Script | Scenario | Load | Tests |
 |--------|----------|------|-------|
@@ -387,22 +423,19 @@ bash scenarios/run-all-chaos.sh
 | `s4-gateway-overload.sh` | Mixed GET + POST burst | 3 × 100 concurrent = 300 total | <5% error rate under sustained load |
 | `s5-cascade-failure.sh` | Inventory killed | 20 customer + 30 order concurrent | customer-service stays up; order fails gracefully; auto-restart on exit |
 | `s6-network-partition.sh` | Toxiproxy TCP fault (10 s + 500 ms jitter) | 30 concurrent | Network-level partition via proxy; graceful skip if Toxiproxy not running |
-| `s7-jvm-heap-exhaustion.sh` | JVM heap capped at 32 MB | 100 requests at 0.05 s intervals | OOM handling; service degrades gracefully |
 | `s8-network-packet-drop.sh` | 60% packet loss for 120 s | 60 requests | Resilience under severe packet loss; macOS-compatible timing |
 
 All scenarios use `docker compose stop/start` (not `pgrep/kill`) and include cleanup traps to restore services on exit.
 
 ### Grafana Dashboard
 
-The monitoring stack auto-provisions a **Chaos Testing Overview** dashboard with 8 panels:
+The monitoring stack auto-provisions a **Chaos Testing Overview** dashboard with the following panels:
 
 | Panel | What it shows |
 |-------|---------------|
 | Service Health | HTTP success/error rates per service |
 | HTTP Request Rate | Requests/sec per service |
 | 5xx Error Rate | Server error rate |
-| JVM Heap Used | Heap consumption (useful for S7) |
-| GC Pause Time | Garbage collection impact |
 | Circuit Breaker Status | OPEN / CLOSED / HALF_OPEN with colour coding |
 | CB Failure Rate | Failure % triggering breaker |
 | CB Blocked Calls | Calls rejected while breaker is OPEN |
@@ -425,7 +458,7 @@ scripts/assert.sh                # Sourced by scenarios — http/response/servic
 - `.github/workflows/chaos-tests.yml` — runs S4 every Monday at 3 AM UTC
 - `.github/workflows/resilience-smoke.yml` — runs steady-state check on PRs touching `order-service` or `api-gateway`
 
-> **See also:** [`docs/CHAOS_TESTING_PLAN.md`](docs/CHAOS_TESTING_PLAN.md)
+> **See also:** [`docs/COMPREHENSIVE-TESTING-PLAN.md`](docs/COMPREHENSIVE-TESTING-PLAN.md)
 
 ---
 
@@ -494,7 +527,7 @@ Compare `order_duration_ms` p95/p99 at different VU counts to understand through
 - `.github/workflows/nightly-load-test.yml` — runs smoke + baseline nightly, uploads JSON results
 - `.github/workflows/pr-smoke-test.yml` — runs smoke test on every PR touching service code
 
-> **See also:** [`docs/LOAD_TESTING_PLAN.md`](docs/LOAD_TESTING_PLAN.md)
+> **See also:** [`docs/COMPREHENSIVE-TESTING-PLAN.md`](docs/COMPREHENSIVE-TESTING-PLAN.md)
 
 ---
 
@@ -513,7 +546,7 @@ Compare `order_duration_ms` p95/p99 at different VU counts to understand through
 | Frontend | Express.js SPA with server-side API proxy |
 | E2E testing | Playwright spec runner + playwright-cli agent runner |
 | Load testing | k6 (TypeScript, bundled with esbuild) |
-| Chaos engineering | Toxiproxy (8 scenarios), docker compose stop/start |
+| Chaos engineering | Toxiproxy (7 scenarios), docker compose stop/start |
 | Observability | `/actuator/health` endpoints, Prometheus, Grafana |
 | CI/CD | GitHub Actions |
 
@@ -521,11 +554,8 @@ Compare `order_duration_ms` p95/p99 at different VU counts to understand through
 
 | Document | Description |
 |----------|-------------|
-| [`docs/DOCKER_COMPOSE_PLAN.md`](docs/DOCKER_COMPOSE_PLAN.md) | Full Docker Compose implementation guide |
-| [`docs/PLAYWRIGHT_UI_TESTING_PLAN.md`](docs/PLAYWRIGHT_UI_TESTING_PLAN.md) | Playwright setup + test authoring guide |
-| [`docs/CHAOS_TESTING_PLAN.md`](docs/CHAOS_TESTING_PLAN.md) | Chaos experiment runbooks + resilience patterns |
-| [`docs/LOAD_TESTING_PLAN.md`](docs/LOAD_TESTING_PLAN.md) | Load test scenarios + SLOs + Gatling setup |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture diagrams |
+| [`docs/COMPREHENSIVE-TESTING-PLAN.md`](docs/COMPREHENSIVE-TESTING-PLAN.md) | E2E, load, and chaos testing strategy |
 | [`docs/API_EXAMPLES.md`](docs/API_EXAMPLES.md) | Comprehensive API testing examples |
 | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) | Original quick start guide |
 

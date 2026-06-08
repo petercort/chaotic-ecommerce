@@ -28,7 +28,6 @@ The user asks to:
 | `s4-gateway-overload.sh` | Concurrent request flood | Gateway throughput under load |
 | `s5-cascade-failure.sh` | Kill multiple services | Cascade isolation |
 | `s6-network-partition.sh` | Docker network disconnect | Split-brain behaviour |
-| `s7-jvm-heap-exhaustion.sh` | Memory stress | OOM recovery |
 | `s8-network-packet-drop.sh` | `tc netem` packet drop | Timeout and retry behaviour |
 
 Run all: `bash scenarios/run-all-chaos.sh`

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import CircuitBreaker from 'opossum';
 import type { CustomerDto, ProductDto } from './types.js';
+import { getServiceToken } from './service-token.js';
 
 const CUSTOMER_SERVICE_URL =
   process.env.CUSTOMER_SERVICE_URL ?? 'http://customer-service:8081';
@@ -18,8 +19,10 @@ const breakerOptions = {
 
 const getCustomerFn = async (id: number): Promise<CustomerDto | null> => {
   try {
+    const token = getServiceToken();
     const res = await axios.get<CustomerDto>(
       `${CUSTOMER_SERVICE_URL}/api/customers/${id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     return res.data;
   } catch (err) {
@@ -38,8 +41,10 @@ export async function getCustomer(id: number): Promise<CustomerDto | null> {
 
 const getProductFn = async (id: number): Promise<ProductDto | null> => {
   try {
+    const token = getServiceToken();
     const res = await axios.get<ProductDto>(
       `${INVENTORY_SERVICE_URL}/api/products/${id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     return res.data;
   } catch (err) {
@@ -61,9 +66,11 @@ const reserveStockFn = async (
   quantity: number,
 ): Promise<boolean> => {
   try {
+    const token = getServiceToken();
     await axios.post(
       `${INVENTORY_SERVICE_URL}/api/products/${productId}/reserve`,
       { quantity },
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     return true;
   } catch (err) {

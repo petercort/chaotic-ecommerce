@@ -6,6 +6,7 @@
 #
 # Service ports:
 #   8080 - API Gateway         (single client-facing entry point)
+#   8085 - Auth Service        (JWT issuance)
 #   8081 - Customer Service
 #   8082 - Inventory Service
 #   8083 - Order Service
@@ -43,6 +44,7 @@ start_node_service() {
 
 # Start data services first
 start_service customer-service
+start_service auth-service
 start_service inventory-service
 echo "Waiting 3s for data services..."
 sleep 3
@@ -54,10 +56,12 @@ start_service order-service
 echo "Waiting 2s for order-service..."
 sleep 2
 
-# Start gateway (routes to all three)
+# Start gateway (routes to all services)
+AUTH_SERVICE_URL=http://localhost:8085 \
 CUSTOMER_SERVICE_URL=http://localhost:8081 \
 INVENTORY_SERVICE_URL=http://localhost:8082 \
 ORDER_SERVICE_URL=http://localhost:8083 \
+NOTIFICATIONS_SERVICE_URL=http://localhost:8084 \
 start_service api-gateway
 
 # Start demo-ui
@@ -68,6 +72,8 @@ echo ""
 echo "All services started."
 echo ""
 echo "Endpoints (via API Gateway on :8080):"
+echo "  POST http://localhost:8080/auth/register"
+echo "  POST http://localhost:8080/auth/login"
 echo "  GET  http://localhost:8080/api/customers"
 echo "  GET  http://localhost:8080/api/products"
 echo "  GET  http://localhost:8080/api/orders"

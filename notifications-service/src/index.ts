@@ -8,11 +8,14 @@ import {
   resetStore,
   StoredNotification
 } from './notifications-store.js';
+import { requireAuth } from './auth.js';
 
 export const app = express();
 const PORT = parseInt(process.env.PORT ?? '8084', 10);
 
 app.use(express.json({ limit: '10kb' }));
+
+app.use('/api', requireAuth);
 
 app.post('/api/notifications', (req: Request, res: Response) => {
   const result = createNotificationSchema.safeParse(req.body);

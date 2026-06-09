@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { createHmac } from 'crypto';
 import { app } from '../src/index';
 import pool, { rowToCustomer, runMigrations, seedDefaultCustomers, closePool } from '../src/db';
 import type { CustomerRow } from '../src/types';
@@ -6,6 +7,37 @@ import type { CustomerRow } from '../src/types';
 jest.mock('../src/eureka');
 
 process.env.NODE_ENV = 'test';
+process.env.SERVICE_AUTH_SECRET = 'test-service-secret';
+
+function serviceHeaders(method: string, path: string): Record<string, string> {
+  const timestamp = Date.now().toString();
+  const serviceName = 'api-gateway';
+  const signature = createHmac('sha256', process.env.SERVICE_AUTH_SECRET as string)
+    .update(`${serviceName}:${method.toUpperCase()}:${path}:${timestamp}`)
+    .digest('hex');
+
+  return {
+    'x-service-name': serviceName,
+    'x-service-timestamp': timestamp,
+    'x-service-signature': signature,
+  };
+}
+
+function getApi(path: string) {
+  return request(app).get(path).set(serviceHeaders('GET', path));
+}
+
+function postApi(path: string) {
+  return request(app).post(path).set(serviceHeaders('POST', path));
+}
+
+function putApi(path: string) {
+  return request(app).put(path).set(serviceHeaders('PUT', path));
+}
+
+function deleteApi(path: string) {
+  return request(app).delete(path).set(serviceHeaders('DELETE', path));
+}
 
 const validCustomer = {
   firstName: 'Alice',
@@ -49,89 +81,90 @@ describe('customer-service', () => {
   // ── GET /api/customers ──────────────────────────────────────────────────────
 
   it('GET /api/customers returns seeded list', async () => {
-    const res = await request(app).get('/api/customers');
+    const res = await getApi('/api/customers');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('GET /api/customers returns 401 without service credentials', async () => {
+    const res = await request(app).get('/api/customers');
+    expect(res.status).toBe(401);
+  });
+
   // ── GET /api/customers/email/:email ────────────────────────────────────────
 
   it('GET /api/customers/email/:email returns customer', async () => {
-    const res = await request(app).get('/api/customers/email/john.doe@example.com');
+    const res = await getApi('/api/customers/email/john.doe@example.com');
     expect(res.status).toBe(200);
     expect(res.body.email).toBe('john.doe@example.com');
   });
 
   it('GET /api/customers/email/:email returns 404 for unknown email', async () => {
-    const res = await request(app).get('/api/customers/email/nobody@example.com');
+    const res = await getApi('/api/customers/email/nobody@example.com');
     expect(res.status).toBe(404);
   });
 
   // ── GET /api/customers/:id ──────────────────────────────────────────────────
 
   it('GET /api/customers/:id returns customer', async () => {
-    const list = await request(app).get('/api/customers');
+    const list = await getApi('/api/customers');
     const id = list.body[0].id;
-    const res = await request(app).get(`/api/customers/${id}`);
+    const res = await getApi(`/api/customers/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(id);
   });
 
   it('GET /api/customers/:id returns 404 for nonexistent id', async () => {
-    const res = await request(app).get('/api/customers/999999');
+    const res = await getApi('/api/customers/999999');
     expect(res.status).toBe(404);
   });
 
   // ── POST /api/customers ─────────────────────────────────────────────────────
 
   it('POST /api/customers creates a new customer', async () => {
-    const before = (await request(app).get('/api/customers')).body.length;
-    const res = await request(app).post('/api/customers').send(validCustomer);
+    const before = (await getApi('/api/customers')).body.length;
+    const res = await postApi('/api/customers').send(validCustomer);
     expect(res.status).toBe(201);
     expect(res.body.email).toBe(validCustomer.email);
-    const after = (await request(app).get('/api/customers')).body.length;
+    const after = (await getApi('/api/customers')).body.length;
     expect(after).toBe(before + 1);
   });
 
   it('POST /api/customers returns 400 for invalid payload (Zod)', async () => {
-    const res = await request(app)
-      .post('/api/customers')
+    const res = await postApi('/api/customers')
       .send({ firstName: '', email: 'not-an-email' });
     expect(res.status).toBe(400);
     expect(res.body.errors).toEqual(expect.any(Array));
   });
 
   it('POST /api/customers returns 409 for duplicate email', async () => {
-    await request(app).post('/api/customers').send(validCustomer);
-    const res = await request(app).post('/api/customers').send(validCustomer);
+    await postApi('/api/customers').send(validCustomer);
+    const res = await postApi('/api/customers').send(validCustomer);
     expect(res.status).toBe(409);
   });
 
   // ── PUT /api/customers/:id ──────────────────────────────────────────────────
 
   it('PUT /api/customers/:id updates customer', async () => {
-    const create = await request(app).post('/api/customers').send(validCustomer);
+    const create = await postApi('/api/customers').send(validCustomer);
     const id = create.body.id;
-    const res = await request(app)
-      .put(`/api/customers/${id}`)
+    const res = await putApi(`/api/customers/${id}`)
       .send({ ...validCustomer, firstName: 'Updated' });
     expect(res.status).toBe(200);
     expect(res.body.firstName).toBe('Updated');
   });
 
   it('PUT /api/customers/:id returns 409 for email conflict with other customer', async () => {
-    const create = await request(app).post('/api/customers').send(validCustomer);
+    const create = await postApi('/api/customers').send(validCustomer);
     const id = create.body.id;
-    const res = await request(app)
-      .put(`/api/customers/${id}`)
+    const res = await putApi(`/api/customers/${id}`)
       .send({ ...validCustomer, email: 'john.doe@example.com' });
     expect(res.status).toBe(409);
   });
 
   it('PUT /api/customers/:id returns 404 for nonexistent customer', async () => {
-    const res = await request(app)
-      .put('/api/customers/999999')
+    const res = await putApi('/api/customers/999999')
       .send(validCustomer);
     expect(res.status).toBe(404);
   });
@@ -139,16 +172,16 @@ describe('customer-service', () => {
   // ── DELETE /api/customers/:id ───────────────────────────────────────────────
 
   it('DELETE /api/customers/:id deletes customer', async () => {
-    const create = await request(app).post('/api/customers').send(validCustomer);
+    const create = await postApi('/api/customers').send(validCustomer);
     const id = create.body.id;
-    const del = await request(app).delete(`/api/customers/${id}`);
+    const del = await deleteApi(`/api/customers/${id}`);
     expect(del.status).toBe(204);
-    const get = await request(app).get(`/api/customers/${id}`);
+    const get = await getApi(`/api/customers/${id}`);
     expect(get.status).toBe(404);
   });
 
   it('DELETE /api/customers/:id returns 404 for nonexistent customer', async () => {
-    const res = await request(app).delete('/api/customers/999999');
+    const res = await deleteApi('/api/customers/999999');
     expect(res.status).toBe(404);
   });
 

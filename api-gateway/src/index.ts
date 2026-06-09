@@ -3,6 +3,7 @@ import { startEurekaClient } from './eureka';
 import cors from 'cors';
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
+import { buildServiceAuthHeaders, requireJwt } from './auth';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '8080', 10);
@@ -22,6 +23,7 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api', requireJwt);
 
 const breakerOptions: CircuitBreaker.Options = {
   timeout: 5000,
@@ -68,11 +70,15 @@ const notificationsBreaker = buildBreaker('notifications-service');
 function buildProxyHandler(breaker: CircuitBreaker, baseUrl: string, serviceName: string) {
   return async (req: Request, res: Response): Promise<void> => {
     const { host: _host, ...forwardHeaders } = req.headers as Record<string, string>;
+    const serviceAuthHeaders = buildServiceAuthHeaders(req);
 
     const proxyRequest: ProxyRequest = {
       method: req.method,
       url: `${baseUrl}${req.path}`,
-      headers: forwardHeaders,
+      headers: {
+        ...forwardHeaders,
+        ...serviceAuthHeaders,
+      },
       data: Object.keys(req.body ?? {}).length > 0 ? req.body : undefined,
       params: req.query as Record<string, string>,
     };
@@ -113,11 +119,15 @@ app.all('/api/products*', buildProxyHandler(inventoryBreaker, INVENTORY_SERVICE_
 app.all('/api/orders*', buildProxyHandler(orderBreaker, ORDER_SERVICE_URL, 'order-service'));
 app.all('/api/notifications*', buildProxyHandler(notificationsBreaker, NOTIFICATIONS_SERVICE_URL, 'notifications-service'));
 
-app.listen(PORT, () => {
-  console.log(`api-gateway listening on port ${PORT}`);
-  console.log(`  /api/customers/** → ${CUSTOMER_SERVICE_URL}`);
-  console.log(`  /api/products/**  → ${INVENTORY_SERVICE_URL}`);
-  console.log(`  /api/orders/**    → ${ORDER_SERVICE_URL}`);
-  console.log(`  /api/notifications/** → ${NOTIFICATIONS_SERVICE_URL}`);
-  startEurekaClient('api-gateway', PORT);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`api-gateway listening on port ${PORT}`);
+    console.log(`  /api/customers/** → ${CUSTOMER_SERVICE_URL}`);
+    console.log(`  /api/products/**  → ${INVENTORY_SERVICE_URL}`);
+    console.log(`  /api/orders/**    → ${ORDER_SERVICE_URL}`);
+    console.log(`  /api/notifications/** → ${NOTIFICATIONS_SERVICE_URL}`);
+    startEurekaClient('api-gateway', PORT);
+  });
+}
+
+export default app;

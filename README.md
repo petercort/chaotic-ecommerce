@@ -9,6 +9,7 @@ Five services collaborate to handle customer management, product inventory, and 
 | Service | Port | Responsibility |
 |---------|------|----------------|
 | `api-gateway` | 8080 | Edge router — single client entry point, circuit breakers |
+| `auth-service` | 8085 | JWT issuance (`/auth/register`, `/auth/login`) backed by PostgreSQL |
 | `customer-service` | 8081 | Customer CRUD, **PostgreSQL** (durable, named volume) |
 | `inventory-service` | 8082 | Product catalog + stock management, SQLite in-memory DB |
 | `order-service` | 8083 | Order lifecycle + orchestration saga, calls customer & inventory via axios |
@@ -16,10 +17,22 @@ Five services collaborate to handle customer management, product inventory, and 
 
 All external traffic enters through the API Gateway on port **8080**. The demo UI on port **8090** proxies `/api/*` server-side to the gateway, so no CORS exposure to the browser. Service discovery uses Docker Compose container DNS — no separate registry needed.
 
+## Authentication Flow
+
+Authentication is now enforced on all public `/api/*` routes.
+
+1. Clients obtain a JWT from `POST /auth/register` or `POST /auth/login` through the gateway.
+2. `api-gateway` validates the bearer token on every `/api/*` request using `JWT_SECRET`.
+3. Downstream services validate the same user JWT independently.
+4. `order-service` signs a short-lived service JWT with `SERVICE_JWT_SECRET` for its internal calls to `customer-service` and `inventory-service`.
+
+Requests without a valid bearer token return `401` at the gateway or the downstream service that receives them.
+
 ## Project Structure
 
 ```
 copilot-typescript-demo/
+├── auth-service/          # JWT issuance — port 8085 (Express + PostgreSQL)
 ├── api-gateway/            # Edge router — port 8080 (Express + axios + opossum)
 ├── customer-service/       # Customer CRUD — port 8081 (Express + PostgreSQL)
 ├── inventory-service/      # Product catalog — port 8082 (Express + SQLite)

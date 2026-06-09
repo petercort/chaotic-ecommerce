@@ -22,6 +22,7 @@ build_service() {
 }
 
 build_service customer-service
+build_service auth-service
 build_service inventory-service
 build_service order-service
 build_service api-gateway

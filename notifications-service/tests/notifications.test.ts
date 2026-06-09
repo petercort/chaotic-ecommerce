@@ -1,7 +1,20 @@
 import request from 'supertest';
 import { app, resetStore } from '../src/index';
+import { signJwt } from '../src/auth';
 
 jest.mock('../src/eureka');
+
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = 'test-secret';
+
+const authHeaders = {
+  Authorization: `Bearer ${signJwt({ sub: '1', username: 'tester', email: 'tester@example.com', type: 'user' }, process.env.JWT_SECRET ?? 'test-secret', 60 * 60)}`,
+};
+
+const api = {
+  get: (path: string) => request(app).get(path).set(authHeaders),
+  post: (path: string) => request(app).post(path).set(authHeaders),
+};
 
 describe('notifications-service', () => {
   beforeEach(() => {
@@ -18,6 +31,7 @@ describe('notifications-service', () => {
   it('creates a notification for a valid payload', async () => {
     const response = await request(app)
       .post('/api/notifications')
+      .set(authHeaders)
       .send({
         channel: 'email',
         to: 'team@example.com',
@@ -35,6 +49,7 @@ describe('notifications-service', () => {
   it('rejects an invalid payload', async () => {
     const response = await request(app)
       .post('/api/notifications')
+      .set(authHeaders)
       .send({
         channel: 'fax',
         to: '',
@@ -50,6 +65,7 @@ describe('notifications-service', () => {
   it('rejects invalid email when channel is email', async () => {
     const response = await request(app)
       .post('/api/notifications')
+      .set(authHeaders)
       .send({
         channel: 'email',
         to: 'not-an-email',
@@ -71,6 +87,7 @@ describe('notifications-service', () => {
   it('lists stored notifications', async () => {
     await request(app)
       .post('/api/notifications')
+      .set(authHeaders)
       .send({
         channel: 'sms',
         to: '+15551234567',
@@ -78,7 +95,7 @@ describe('notifications-service', () => {
         body: 'Inventory service is degraded.',
       });
 
-    const response = await request(app).get('/api/notifications');
+    const response = await api.get('/api/notifications');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([

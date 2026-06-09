@@ -1,5 +1,5 @@
 {
-  "name": "api-gateway",
+  "name": "auth-service",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -11,24 +11,19 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "axios": "^1.6.5",
-    "cors": "^2.8.5",
     "eureka-js-client": "^4.5.0",
     "express": "^4.18.2",
-    "express-rate-limit": "^8.5.2",
-    "http-proxy-middleware": "^2.0.9",
-    "ioredis": "^5.11.1",
-    "opossum": "^8.1.1",
-    "rate-limit-redis": "^5.0.0"
+    "pg": "^8.11.5",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/node": "^20.11.5",
-    "@types/opossum": "^8.1.4",
     "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.5",
+    "@types/pg": "^8.11.0",
     "@types/supertest": "^2.0.16",
     "jest": "^29.7.0",
+    "pg-mem": "^3.0.3",
     "supertest": "^6.3.4",
     "ts-jest": "^29.4.11",
     "tsx": "^4.7.0",

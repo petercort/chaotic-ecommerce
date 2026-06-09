@@ -2,11 +2,12 @@ import express from "express";
 import customerRoutes from "./routes";
 import { startEurekaClient } from "./eureka";
 import { connectWithRetry, runMigrations, seedDefaultCustomers, isDbHealthy } from "./db";
+import { requireAuth } from "./auth";
 
 const app = express();
 const PORT = process.env.PORT ?? 8081;
 
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 app.get("/actuator/health", async (_req, res) => {
   const healthy = await isDbHealthy();
@@ -17,6 +18,7 @@ app.get("/actuator/health", async (_req, res) => {
   }
 });
 
+app.use('/api', requireAuth);
 app.use("/api/customers", customerRoutes);
 
 async function start() {

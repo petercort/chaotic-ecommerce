@@ -34,6 +34,34 @@ services:
       retries: 5
       start_period: 10s
 
+  auth-service:
+    build:
+      context: ./auth-service
+    container_name: auth-service
+    ports:
+      - "${AUTH_SERVICE_PORT:-8085}:8085"
+    environment:
+      EUREKA_HOST: eureka-server
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-customer_app}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-customer_pwd}
+      DB_NAME: ${POSTGRES_DB:-customers}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+    networks:
+      - ecommerce-net
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8085/actuator/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{process.exit(JSON.parse(d).status==='UP'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
   customer-service:
     build:
       context: ./customer-service
@@ -47,6 +75,8 @@ services:
       DB_USER: ${POSTGRES_USER:-customer_app}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-customer_pwd}
       DB_NAME: ${POSTGRES_DB:-customers}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      SERVICE_JWT_SECRET: ${SERVICE_JWT_SECRET:-dev-service-jwt-secret}
     networks:
       - ecommerce-net
     depends_on:
@@ -69,6 +99,8 @@ services:
       - "${INVENTORY_SERVICE_PORT:-8082}:8082"
     environment:
       EUREKA_HOST: eureka-server
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      SERVICE_JWT_SECRET: ${SERVICE_JWT_SECRET:-dev-service-jwt-secret}
     networks:
       - ecommerce-net
     depends_on:
@@ -91,6 +123,8 @@ services:
       CUSTOMER_SERVICE_URL: http://customer-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       EUREKA_HOST: eureka-server
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      SERVICE_JWT_SECRET: ${SERVICE_JWT_SECRET:-dev-service-jwt-secret}
     networks:
       - ecommerce-net
     depends_on:
@@ -113,6 +147,8 @@ services:
       - "${NOTIFICATIONS_SERVICE_PORT:-8084}:8084"
     environment:
       EUREKA_HOST: eureka-server
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      SERVICE_JWT_SECRET: ${SERVICE_JWT_SECRET:-dev-service-jwt-secret}
     networks:
       - ecommerce-net
     depends_on:
@@ -148,6 +184,7 @@ services:
     ports:
       - "${API_GATEWAY_PORT:-8080}:8080"
     environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
       CUSTOMER_SERVICE_URL: http://customer-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       ORDER_SERVICE_URL: http://order-service:8083
@@ -156,9 +193,12 @@ services:
       REDIS_URL: redis://redis:6379
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
     networks:
       - ecommerce-net
     depends_on:
+      auth-service:
+        condition: service_healthy
       customer-service:
         condition: service_healthy
       inventory-service:

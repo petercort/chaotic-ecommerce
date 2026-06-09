@@ -6,6 +6,7 @@ import CircuitBreaker from 'opossum';
 import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { Redis } from 'ioredis';
+import { requireAuth } from './auth';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '8080', 10);
@@ -44,6 +45,7 @@ const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL ?? 'http://custome
 const INVENTORY_SERVICE_URL = process.env.INVENTORY_SERVICE_URL ?? 'http://inventory-service:8082';
 const ORDER_SERVICE_URL = process.env.ORDER_SERVICE_URL ?? 'http://order-service:8083';
 const NOTIFICATIONS_SERVICE_URL = process.env.NOTIFICATIONS_SERVICE_URL ?? 'http://notifications-service:8084';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL ?? 'http://auth-service:8085';
 
 app.use(
   cors({
@@ -53,10 +55,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api', buildRateLimiter());
+app.use('/api', requireAuth);
 
 const breakerOptions: CircuitBreaker.Options = {
   timeout: 5000,
@@ -95,10 +98,55 @@ function buildBreaker(serviceName: string) {
   return breaker;
 }
 
+function buildPathProxyHandler(
+  breaker: CircuitBreaker,
+  baseUrl: string,
+  serviceName: string,
+  pathBuilder: (req: Request) => string,
+) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { host: _host, ...forwardHeaders } = req.headers as Record<string, string>;
+
+    const proxyRequest: ProxyRequest = {
+      method: req.method,
+      url: `${baseUrl}${pathBuilder(req)}`,
+      headers: forwardHeaders,
+      data: Object.keys(req.body ?? {}).length > 0 ? req.body : undefined,
+      params: req.query as Record<string, string>,
+    };
+
+    try {
+      const upstream = await breaker.fire(proxyRequest) as AxiosResponse;
+      res.status(upstream.status);
+
+      const hopByHop = new Set([
+        'connection', 'keep-alive', 'transfer-encoding', 'te',
+        'upgrade', 'trailer', 'proxy-authorization', 'proxy-authenticate',
+      ]);
+
+      for (const [key, value] of Object.entries(upstream.headers)) {
+        if (!hopByHop.has(key.toLowerCase())) {
+          res.setHeader(key, value as string);
+        }
+      }
+
+      res.send(upstream.data);
+    } catch (err) {
+      if ((err as Error).message?.includes('Breaker is open')) {
+        res.status(503).json({ error: 'Service unavailable', service: serviceName });
+      } else {
+        console.error(`[proxy] Error forwarding to ${serviceName}:`, err);
+        res.status(502).json({ error: 'Bad gateway', service: serviceName });
+      }
+    }
+  };
+}
+
 const customerBreaker = buildBreaker('customer-service');
 const inventoryBreaker = buildBreaker('inventory-service');
 const orderBreaker = buildBreaker('order-service');
 const notificationsBreaker = buildBreaker('notifications-service');
+const authBreaker = buildBreaker('auth-service');
 
 function buildProxyHandler(breaker: CircuitBreaker, baseUrl: string, serviceName: string) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -147,12 +195,21 @@ app.all('/api/customers*', buildProxyHandler(customerBreaker, CUSTOMER_SERVICE_U
 app.all('/api/products*', buildProxyHandler(inventoryBreaker, INVENTORY_SERVICE_URL, 'inventory-service'));
 app.all('/api/orders*', buildProxyHandler(orderBreaker, ORDER_SERVICE_URL, 'order-service'));
 app.all('/api/notifications*', buildProxyHandler(notificationsBreaker, NOTIFICATIONS_SERVICE_URL, 'notifications-service'));
+app.all(
+  '/auth*',
+  buildPathProxyHandler(authBreaker, AUTH_SERVICE_URL, 'auth-service', (req) => req.originalUrl.split('?')[0]),
+);
 
-app.listen(PORT, () => {
-  console.log(`api-gateway listening on port ${PORT}`);
-  console.log(`  /api/customers/** → ${CUSTOMER_SERVICE_URL}`);
-  console.log(`  /api/products/**  → ${INVENTORY_SERVICE_URL}`);
-  console.log(`  /api/orders/**    → ${ORDER_SERVICE_URL}`);
-  console.log(`  /api/notifications/** → ${NOTIFICATIONS_SERVICE_URL}`);
-  startEurekaClient('api-gateway', PORT);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`api-gateway listening on port ${PORT}`);
+    console.log(`  /api/customers/** → ${CUSTOMER_SERVICE_URL}`);
+    console.log(`  /api/products/**  → ${INVENTORY_SERVICE_URL}`);
+    console.log(`  /api/orders/**    → ${ORDER_SERVICE_URL}`);
+    console.log(`  /api/notifications/** → ${NOTIFICATIONS_SERVICE_URL}`);
+    console.log(`  /auth/** → ${AUTH_SERVICE_URL}`);
+    startEurekaClient('api-gateway', PORT);
+  });
+}
+
+export { app };

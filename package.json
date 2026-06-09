@@ -4,6 +4,7 @@
   "description": "Chaotic e-commerce microservices monorepo (Express + TypeScript) orchestrated via Docker Compose and Eureka",
   "private": true,
   "workspaces": [
+    "auth-service",
     "api-gateway",
     "customer-service",
     "order-service",

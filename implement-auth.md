@@ -16,5 +16,12 @@ Public API routes exposed through the api-gateway (`/api/customers`, `/api/produ
 - [ ] Valid tokens pass through to downstream services.
 - [ ] order-service → customer/inventory calls include and verify a service credential.
 - [ ] Tests cover authorized and unauthorized paths.
+- [ ] Documentation is updated with auth flow and token management instructions.
 
-Priority: 🔴 High impact — security & correctness
+## Open Questions
+
+What existing libraries should be used for JWT validation and service-to-service auth?
+
+Where will tokens originate from? Will there be a central auth service or will tokens be issued by an external provider?
+
+Are there any performance implications of adding auth middleware at the api-gateway, and how can we mitigate them?

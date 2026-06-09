@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { createHmac } from 'crypto';
 import app from '../src/index';
 import { db, rowToProduct } from '../src/db';
 import type { ProductRow } from '../src/types';
@@ -6,6 +7,37 @@ import type { ProductRow } from '../src/types';
 jest.mock('../src/eureka');
 
 process.env.NODE_ENV = 'test';
+process.env.SERVICE_AUTH_SECRET = 'test-service-secret';
+
+function serviceHeaders(method: string, path: string): Record<string, string> {
+  const timestamp = Date.now().toString();
+  const serviceName = 'api-gateway';
+  const signature = createHmac('sha256', process.env.SERVICE_AUTH_SECRET as string)
+    .update(`${serviceName}:${method.toUpperCase()}:${path}:${timestamp}`)
+    .digest('hex');
+
+  return {
+    'x-service-name': serviceName,
+    'x-service-timestamp': timestamp,
+    'x-service-signature': signature,
+  };
+}
+
+function getApi(path: string) {
+  return request(app).get(path).set(serviceHeaders('GET', path));
+}
+
+function postApi(path: string) {
+  return request(app).post(path).set(serviceHeaders('POST', path));
+}
+
+function putApi(path: string) {
+  return request(app).put(path).set(serviceHeaders('PUT', path));
+}
+
+function deleteApi(path: string) {
+  return request(app).delete(path).set(serviceHeaders('DELETE', path));
+}
 
 const validProduct = {
   name: 'Test Widget',
@@ -42,14 +74,19 @@ describe('inventory-service', () => {
   // ── GET /api/products ─────────────────────────────────────────────────────
 
   it('GET /api/products returns seeded products', async () => {
-    const res = await request(app).get('/api/products');
+    const res = await getApi('/api/products');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(6);
   });
 
+  it('GET /api/products returns 401 without service credentials', async () => {
+    const res = await request(app).get('/api/products');
+    expect(res.status).toBe(401);
+  });
+
   it('GET /api/products?activeOnly=true returns only active', async () => {
-    const res = await request(app).get('/api/products?activeOnly=true');
+    const res = await getApi('/api/products?activeOnly=true');
     expect(res.status).toBe(200);
     res.body.forEach((p: { active: boolean }) => expect(p.active).toBe(true));
   });
@@ -60,7 +97,7 @@ describe('inventory-service', () => {
     // Insert a low stock product
     db.prepare(`INSERT INTO products (name, sku, price, stock_quantity, category, reorder_level, active, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 1, ?)`).run('Low Item', 'LOW-001', 5.00, 2, 'Test', 10, new Date().toISOString());
-    const res = await request(app).get('/api/products/low-stock?threshold=5');
+    const res = await getApi('/api/products/low-stock?threshold=5');
     expect(res.status).toBe(200);
     const skus = res.body.map((p: { sku: string }) => p.sku);
     expect(skus).toContain('LOW-001');
@@ -70,20 +107,20 @@ describe('inventory-service', () => {
   // ── GET /api/products/sku/:sku ────────────────────────────────────────────
 
   it('GET /api/products/sku/:sku returns product', async () => {
-    const res = await request(app).get('/api/products/sku/LAPTOP-001');
+    const res = await getApi('/api/products/sku/LAPTOP-001');
     expect(res.status).toBe(200);
     expect(res.body.sku).toBe('LAPTOP-001');
   });
 
   it('GET /api/products/sku/:sku returns 404 for unknown sku', async () => {
-    const res = await request(app).get('/api/products/sku/NOPE-999');
+    const res = await getApi('/api/products/sku/NOPE-999');
     expect(res.status).toBe(404);
   });
 
   // ── GET /api/products/category/:category ──────────────────────────────────
 
   it('GET /api/products/category/:category returns products', async () => {
-    const res = await request(app).get('/api/products/category/Electronics');
+    const res = await getApi('/api/products/category/Electronics');
     expect(res.status).toBe(200);
     res.body.forEach((p: { category: string }) => expect(p.category).toBe('Electronics'));
   });
@@ -91,69 +128,69 @@ describe('inventory-service', () => {
   // ── GET /api/products/:id ─────────────────────────────────────────────────
 
   it('GET /api/products/:id returns product', async () => {
-    const list = await request(app).get('/api/products');
+    const list = await getApi('/api/products');
     const id = list.body[0].id;
-    const res = await request(app).get(`/api/products/${id}`);
+    const res = await getApi(`/api/products/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(id);
   });
 
   it('GET /api/products/:id returns 404 for nonexistent', async () => {
-    const res = await request(app).get('/api/products/999999');
+    const res = await getApi('/api/products/999999');
     expect(res.status).toBe(404);
   });
 
   // ── POST /api/products ────────────────────────────────────────────────────
 
   it('POST /api/products creates a product', async () => {
-    const before = (await request(app).get('/api/products')).body.length;
-    const res = await request(app).post('/api/products').send(validProduct);
+    const before = (await getApi('/api/products')).body.length;
+    const res = await postApi('/api/products').send(validProduct);
     expect(res.status).toBe(201);
     expect(res.body.sku).toBe(validProduct.sku);
-    const after = (await request(app).get('/api/products')).body.length;
+    const after = (await getApi('/api/products')).body.length;
     expect(after).toBe(before + 1);
   });
 
   it('POST /api/products returns 400 for invalid payload', async () => {
-    const res = await request(app).post('/api/products').send({ name: '' });
+    const res = await postApi('/api/products').send({ name: '' });
     expect(res.status).toBe(400);
   });
 
   it('POST /api/products returns 409 for duplicate SKU', async () => {
-    await request(app).post('/api/products').send(validProduct);
-    const res = await request(app).post('/api/products').send(validProduct);
+    await postApi('/api/products').send(validProduct);
+    const res = await postApi('/api/products').send(validProduct);
     expect(res.status).toBe(409);
   });
 
   // ── POST /api/products/:id/reserve ───────────────────────────────────────
 
   it('POST /api/products/:id/reserve decrements stock atomically', async () => {
-    const create = await request(app).post('/api/products').send({ ...validProduct, stockQuantity: 10 });
+    const create = await postApi('/api/products').send({ ...validProduct, stockQuantity: 10 });
     const id = create.body.id;
-    const res = await request(app).post(`/api/products/${id}/reserve?quantity=3`);
+    const res = await postApi(`/api/products/${id}/reserve?quantity=3`);
     expect(res.status).toBe(200);
     expect(res.body.stockQuantity).toBe(7);
   });
 
   it('POST /api/products/:id/reserve returns 400 for insufficient stock', async () => {
-    const create = await request(app).post('/api/products').send({ ...validProduct, stockQuantity: 2 });
+    const create = await postApi('/api/products').send({ ...validProduct, stockQuantity: 2 });
     const id = create.body.id;
-    const res = await request(app).post(`/api/products/${id}/reserve?quantity=5`);
+    const res = await postApi(`/api/products/${id}/reserve?quantity=5`);
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/insufficient stock/i);
   });
 
   it('POST /api/products/:id/reserve returns 404 for nonexistent product', async () => {
-    const res = await request(app).post('/api/products/999999/reserve?quantity=1');
+    const res = await postApi('/api/products/999999/reserve?quantity=1');
     expect(res.status).toBe(404);
   });
 
   // ── POST /api/products/:id/restore ───────────────────────────────────────
 
   it('POST /api/products/:id/restore increments stock', async () => {
-    const create = await request(app).post('/api/products').send({ ...validProduct, stockQuantity: 5 });
+    const create = await postApi('/api/products').send({ ...validProduct, stockQuantity: 5 });
     const id = create.body.id;
-    const res = await request(app).post(`/api/products/${id}/restore?quantity=3`);
+    const res = await postApi(`/api/products/${id}/restore?quantity=3`);
     expect(res.status).toBe(200);
     expect(res.body.stockQuantity).toBe(8);
   });
@@ -161,16 +198,16 @@ describe('inventory-service', () => {
   // ── DELETE /api/products/:id ─────────────────────────────────────────────
 
   it('DELETE /api/products/:id deletes product', async () => {
-    const create = await request(app).post('/api/products').send(validProduct);
+    const create = await postApi('/api/products').send(validProduct);
     const id = create.body.id;
-    const del = await request(app).delete(`/api/products/${id}`);
+    const del = await deleteApi(`/api/products/${id}`);
     expect(del.status).toBe(204);
-    const get = await request(app).get(`/api/products/${id}`);
+    const get = await getApi(`/api/products/${id}`);
     expect(get.status).toBe(404);
   });
 
   it('DELETE /api/products/:id returns 404 for nonexistent', async () => {
-    const res = await request(app).delete('/api/products/999999');
+    const res = await deleteApi('/api/products/999999');
     expect(res.status).toBe(404);
   });
 

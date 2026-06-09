@@ -33,7 +33,7 @@ app.use(session({
     secure: false,
     maxAge: 8 * 60 * 60 * 1000,
   },
-}));
+}) as any);
 
 // ---------------------------------------------------------------------------
 // Auth routes (public — no session check)

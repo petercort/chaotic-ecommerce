@@ -2,6 +2,7 @@ import express from "express";
 import customerRoutes from "./routes";
 import { startEurekaClient } from "./eureka";
 import { connectWithRetry, runMigrations, seedDefaultCustomers, isDbHealthy } from "./db";
+import { requireServiceAuth } from "./service-auth";
 
 const app = express();
 const PORT = process.env.PORT ?? 8081;
@@ -17,7 +18,7 @@ app.get("/actuator/health", async (_req, res) => {
   }
 });
 
-app.use("/api/customers", customerRoutes);
+app.use("/api/customers", requireServiceAuth, customerRoutes);
 
 async function start() {
   await connectWithRetry();

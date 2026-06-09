@@ -42,6 +42,7 @@ services:
       - "${CUSTOMER_SERVICE_PORT:-8081}:8081"
     environment:
       EUREKA_HOST: eureka-server
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-change-me-service-auth-secret}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-customer_app}
@@ -69,6 +70,7 @@ services:
       - "${INVENTORY_SERVICE_PORT:-8082}:8082"
     environment:
       EUREKA_HOST: eureka-server
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-change-me-service-auth-secret}
     networks:
       - ecommerce-net
     depends_on:
@@ -91,6 +93,8 @@ services:
       CUSTOMER_SERVICE_URL: http://customer-service:8081
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       EUREKA_HOST: eureka-server
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-change-me-service-auth-secret}
+      SERVICE_AUTH_CALLER: order-service
     networks:
       - ecommerce-net
     depends_on:
@@ -137,6 +141,9 @@ services:
       ORDER_SERVICE_URL: http://order-service:8083
       NOTIFICATIONS_SERVICE_URL: http://notifications-service:8084
       EUREKA_HOST: eureka-server
+      JWT_SECRET: ${JWT_SECRET:-change-me-jwt-secret}
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-change-me-service-auth-secret}
+      SERVICE_AUTH_CALLER: api-gateway
     networks:
       - ecommerce-net
     depends_on:

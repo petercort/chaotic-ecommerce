@@ -10,10 +10,10 @@
   },
   "dependencies": {
     "@copilot-extensions/preview-sdk": "^5.0.1",
-    "express": "^4.18.2",
+    "express": "^4.22.2",
     "express-session": "^1.18.1",
     "node-cron": "^4.2.1",
-    "uuid": "^9.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -21,7 +21,7 @@
     "@types/node": "^25.6.0",
     "@types/uuid": "^11.0.0",
     "nodemon": "^3.0.2",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }
